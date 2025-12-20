@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>良心抽卡RPG</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="container">
+    <!-- 资源栏 -->
+    <div class="resources">
+      <span>💎 抽卡券: <b id="tickets">50</b></span>
+      <span>🪙 金币: <b id="gold">1000</b></span>
+      <span>⚡ 体力: <b id="stamina">100</b>/100</span>
+      <span>🎫 保底: <b id="pity">0</b>/20</span>
+    </div>
+
+    <!-- 导航 -->
+    <div class="nav">
+      <button class="active" data-page="gacha">抽卡</button>
+      <button data-page="team">队伍</button>
+      <button data-page="battle">战斗</button>
+    </div>
+
+    <!-- 抽卡页 -->
+    <div id="page-gacha" class="page active">
+      <div class="gacha-banner">
+        <h2>✨ 限定池：传说干员 ✨</h2>
+        <p>20抽保底SSR · 每日签到送10抽</p>
+      </div>
+
+      <div class="gacha-buttons">
+        <button class="btn btn-success" id="btn-daily">每日签到</button>
+        <button class="btn btn-primary" id="btn-single">单抽 x1</button>
+        <button class="btn btn-secondary" id="btn-ten">十连 x10</button>
+      </div>
+
+      <div class="panel">
+        <h2>抽卡结果</h2>
+        <div class="gacha-result" id="gacha-result"></div>
+      </div>
+    </div>
+
+    <!-- 队伍页 -->
+    <div id="page-team" class="page">
+      <div class="panel">
+        <h2>出战队伍（最多4人）</h2>
+        <div class="team-slots" id="team-slots"></div>
+      </div>
+
+      <div class="panel">
+        <h2>角色仓库</h2>
+        <div class="character-list" id="char-list"></div>
+      </div>
+    </div>
+
+    <!-- 战斗页 -->
+    <div id="page-battle" class="page">
+      <div class="panel" id="stage-panel">
+        <h2>选择关卡</h2>
+        <div class="stage-select" id="stage-list"></div>
+      </div>
+
+      <div class="battle-field" id="battle-field">
+        <div class="battle-area">
+          <div class="battle-side" id="ally-side"></div>
+          <div class="battle-vs">⚔️</div>
+          <div class="battle-side" id="enemy-side"></div>
+        </div>
+
+        <div class="battle-log" id="battle-log"></div>
+
+        <div class="skill-buttons" id="skill-buttons"></div>
+        <div class="target-select" id="target-select"></div>
+
+        <div style="text-align:center; margin-top:15px;">
+          <button class="btn btn-warning" id="btn-flee">撤退</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 结算弹窗 -->
+  <div class="modal" id="result-modal">
+    <div class="modal-content">
+      <h2 id="modal-title">战斗胜利！</h2>
+      <div class="reward-list" id="modal-rewards"></div>
+      <button class="btn btn-primary" id="btn-close-modal">确定</button>
+    </div>
+  </div>
+
+  <!-- 按顺序加载JS模块 -->
+  <script src="js/config.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/state.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/gacha.js"></script>
+  <script src="js/team.js"></script>
+  <script src="js/battle.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
