@@ -37,8 +37,8 @@ function createSpinePlayer(containerId, spineData) {
     if (!container) return;
     
     // viewport参数
-    const vpWidth = 250;
-    const vpHeight = 350;
+    const vpWidth = 50;
+    const vpHeight = 150;
     
     try {
       const player = new spine.SpinePlayer(containerId, {
