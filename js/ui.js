@@ -1,4 +1,33 @@
 // UI 更新函数
+// 生成角色媒体元素（支持webm视频和图片）
+function createCharMedia(src, alt, className) {
+  if (!src) {
+    return `<div class="img-placeholder ${className}" style="width:100%;height:100%;">👤</div>`;
+  }
+  
+  const isVideo = src.endsWith('.webm') || src.endsWith('.mp4');
+  
+  if (isVideo) {
+    return `
+      <video class="${className}" 
+             src="${src}" 
+             autoplay 
+             loop 
+             muted 
+             playsinline
+             onerror="this.outerHTML='<div class=\\'img-placeholder ${className}\\'>?</div>'"
+      ></video>
+    `;
+  } else {
+    return `
+      <img class="${className}" 
+           src="${src}" 
+           alt="${alt}"
+           onerror="this.outerHTML='<div class=\\'img-placeholder ${className}\\'>?</div>'"
+      >
+    `;
+  }
+}
 
 // 更新资源显示
 function updateResourceUI() {
@@ -35,14 +64,21 @@ function showGachaResult(results) {
   
   results.forEach((r, i) => {
     setTimeout(() => {
+      const data = CHARACTER_DATA[r.name];
       const card = document.createElement('div');
       card.className = `card ${r.rarity.toLowerCase()}`;
+      
+      const mediaHtml = createCharMedia(data.img, r.name, 'card-video');
+      
       card.innerHTML = `
-        <div style="font-weight:bold;">${r.rarity}</div>
-        <div style="margin-top:5px;">${r.name}</div>
+        ${mediaHtml}
+        <div class="card-info">
+          <div class="card-rarity">${r.rarity}</div>
+          <div class="card-name">${r.name}</div>
+        </div>
       `;
       container.appendChild(card);
-    }, i * 100);
+    }, i * 150);
   });
 }
 

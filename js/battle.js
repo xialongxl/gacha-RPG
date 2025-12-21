@@ -1,4 +1,4 @@
-// 战斗系统
+// ==================== 战斗系统 ====================
 
 // 更新关卡UI
 function updateStageUI() {
@@ -38,6 +38,7 @@ function startBattle(stage) {
   battle.active = true;
   battle.stage = stage;
   
+  // 初始化我方单位
   battle.allies = team.map(name => {
     const data = CHARACTER_DATA[name];
     return {
@@ -57,13 +58,14 @@ function startBattle(stage) {
     };
   });
   
+  // 初始化敌方单位
   battle.enemies = stage.enemies.map(e => ({
     name: e.name,
     hp: e.hp,
     atk: e.atk,
     def: e.def,
     spd: e.spd,
-    skills: ['普攻'],
+    skills: e.skills || ['普攻'],
     currentHp: e.hp,
     maxHp: e.hp,
     energy: 0,
@@ -110,29 +112,42 @@ function renderBattleSide(containerId, units, title, isEnemy) {
     const div = document.createElement('div');
     div.className = `battle-unit ${isEnemy ? 'enemy' : ''} ${isDead ? 'dead' : ''} ${isActing ? 'acting' : ''}`;
     
-    let html = `
-      <div class="unit-name">${unit.name}</div>
-      <div class="hp-bar">
-        <div class="hp-bar-fill ${isLow ? 'low' : ''}" style="width: ${hpPercent}%"></div>
-      </div>
+    // 获取媒体
+    const charData = CHARACTER_DATA[unit.name];
+    let avatarHtml;
+    
+    if (charData && charData.img) {
+      avatarHtml = createCharMedia(charData.img, unit.name, 'unit-video');
+    } else {
+      const emoji = isEnemy ? '👹' : '👤';
+      avatarHtml = `<div class="img-placeholder" style="width:50px;height:60px;">${emoji}</div>`;
+    }
+    
+    let infoHtml = `
+      <div class="unit-info">
+        <div class="unit-name">${unit.name}</div>
+        <div class="hp-bar">
+          <div class="hp-bar-fill ${isLow ? 'low' : ''}" style="width:${hpPercent}%"></div>
+        </div>
     `;
     
     if (!isEnemy) {
-      html += `
+      infoHtml += `
         <div class="energy-bar">
-          <div class="energy-bar-fill" style="width: ${energyPercent}%"></div>
+          <div class="energy-bar-fill" style="width:${energyPercent}%"></div>
         </div>
       `;
     }
     
-    html += `
-      <div class="unit-stats">
-        HP: ${Math.max(0, unit.currentHp)} / ${unit.maxHp}
-        ${!isEnemy ? ` | ⚡${unit.energy}` : ''}
+    infoHtml += `
+        <div class="unit-stats">
+          HP:${Math.max(0, unit.currentHp)}/${unit.maxHp}
+          ${!isEnemy ? ` | ⚡${unit.energy}` : ''}
+        </div>
       </div>
     `;
     
-    div.innerHTML = html;
+    div.innerHTML = avatarHtml + infoHtml;
     container.appendChild(div);
   });
 }
@@ -184,6 +199,8 @@ function nextTurn() {
   }
 }
 
+// ==================== 玩家操作 ====================
+
 // 显示技能按钮
 function showSkillButtons(unit) {
   const div = document.getElementById('skill-buttons');
@@ -191,6 +208,8 @@ function showSkillButtons(unit) {
   
   unit.skills.forEach(skillName => {
     const skill = SKILL_EFFECTS[skillName];
+    if (!skill) return;
+    
     const canUse = unit.energy >= skill.cost;
     
     const btn = document.createElement('button');
@@ -213,6 +232,7 @@ function showSkillButtons(unit) {
 // 选择技能
 function selectSkill(skillName, unit) {
   const skill = SKILL_EFFECTS[skillName];
+  if (!skill) return;
   
   battle.selectedSkill = {
     name: skillName,
@@ -270,13 +290,16 @@ function executeSkill(skill, target) {
   
   switch (skill.type) {
     case 'damage':
-      executeDamageSkill(skill, user, atk, target);
+      executePlayerDamage(skill, user, atk, target);
       break;
     case 'heal':
-      executeHealSkill(skill, user, atk, target);
+      executePlayerHeal(skill, user, atk, target);
       break;
     case 'buff':
-      executeBuffSkill(skill, user, atk);
+      executePlayerBuff(skill, user, atk);
+      break;
+    case 'debuff':
+      executePlayerDebuff(skill, user, atk, target);
       break;
   }
   
@@ -285,18 +308,12 @@ function executeSkill(skill, target) {
   setTimeout(() => nextTurn(), 1000);
 }
 
-// 执行伤害技能
-function executeDamageSkill(skill, user, atk, target) {
-  const calcDamage = (t) => {
-    const dmg = Math.floor(atk * skill.multiplier - t.def * 0.5);
-    return Math.max(1, dmg);
-  };
+// 玩家伤害技能
+function executePlayerDamage(skill, user, atk, target) {
+  const calcDamage = (t) => Math.max(1, Math.floor(atk * skill.multiplier - t.def * 0.5));
   
   const applyDamage = (t, dmg) => {
     t.currentHp -= dmg;
-    if (!t.isEnemy) {
-      t.energy = Math.min(t.maxEnergy, t.energy + 20);
-    }
   };
   
   switch (skill.target) {
@@ -305,41 +322,52 @@ function executeDamageSkill(skill, user, atk, target) {
         const dmg = calcDamage(target);
         applyDamage(target, dmg);
         addBattleLog(`${user.name}【${skill.name}】→ ${target.name}，${dmg} 伤害！`, 'damage');
+        if (target.currentHp <= 0) {
+          addBattleLog(`💀 ${target.name} 被击败！`, 'system');
+        }
       }
       break;
       
     case 'all':
+      addBattleLog(`${user.name}【${skill.name}】！`, 'damage');
       battle.enemies.filter(e => e.currentHp > 0).forEach(enemy => {
         const dmg = calcDamage(enemy);
         applyDamage(enemy, dmg);
-        addBattleLog(`${user.name}【${skill.name}】→ ${enemy.name}，${dmg} 伤害！`, 'damage');
+        addBattleLog(`  → ${enemy.name} 受到 ${dmg} 伤害！`, 'damage');
+        if (enemy.currentHp <= 0) {
+          addBattleLog(`💀 ${enemy.name} 被击败！`, 'system');
+        }
       });
       break;
       
     case 'random3':
     case 'random2':
       const times = skill.target === 'random3' ? 3 : 2;
+      addBattleLog(`${user.name}【${skill.name}】！`, 'damage');
       for (let i = 0; i < times; i++) {
         const alive = battle.enemies.filter(e => e.currentHp > 0);
         if (alive.length === 0) break;
         const t = alive[Math.floor(Math.random() * alive.length)];
         const dmg = calcDamage(t);
         applyDamage(t, dmg);
-        addBattleLog(`${user.name} 攻击 ${t.name}，${dmg} 伤害！`, 'damage');
+        addBattleLog(`  → ${t.name} 受到 ${dmg} 伤害！`, 'damage');
+        if (t.currentHp <= 0) {
+          addBattleLog(`💀 ${t.name} 被击败！`, 'system');
+        }
       }
       break;
   }
 }
 
-// 执行治疗技能
-function executeHealSkill(skill, user, atk, target) {
+// 玩家治疗技能
+function executePlayerHeal(skill, user, atk, target) {
   const healAmt = Math.floor(atk * skill.multiplier);
   
   switch (skill.target) {
     case 'ally':
       if (target) {
         target.currentHp = Math.min(target.maxHp, target.currentHp + healAmt);
-        addBattleLog(`${user.name} 治疗 ${target.name}，+${healAmt} HP！`, 'heal');
+        addBattleLog(`${user.name}【${skill.name}】→ ${target.name}，+${healAmt} HP！`, 'heal');
       }
       break;
       
@@ -347,40 +375,62 @@ function executeHealSkill(skill, user, atk, target) {
       battle.allies.filter(a => a.currentHp > 0).forEach(ally => {
         ally.currentHp = Math.min(ally.maxHp, ally.currentHp + healAmt);
       });
-      addBattleLog(`${user.name} 群疗，全体 +${healAmt} HP！`, 'heal');
+      addBattleLog(`${user.name}【${skill.name}】全体恢复 ${healAmt} HP！`, 'heal');
       break;
   }
 }
 
-// 执行增益技能
-function executeBuffSkill(skill, user, atk) {
+// 玩家增益技能
+function executePlayerBuff(skill, user, atk) {
   const buffAmt = Math.floor(atk * skill.multiplier);
   
   switch (skill.target) {
     case 'self':
       user.buffAtk += buffAmt;
-      addBattleLog(`${user.name} 强化，ATK +${buffAmt}！`, 'system');
+      addBattleLog(`${user.name}【${skill.name}】ATK +${buffAmt}！`, 'system');
       break;
       
     case 'all_ally':
       battle.allies.filter(a => a.currentHp > 0).forEach(ally => {
         ally.buffAtk += buffAmt;
       });
-      addBattleLog(`${user.name} 全体强化，ATK +${buffAmt}！`, 'system');
+      addBattleLog(`${user.name}【${skill.name}】全体 ATK +${buffAmt}！`, 'system');
       break;
   }
 }
 
-// 敌人AI（完整智能版，会用技能）
+// 玩家减益技能
+function executePlayerDebuff(skill, user, atk, target) {
+  const debuffAmt = skill.multiplier;
+  
+  switch (skill.target) {
+    case 'all':
+      battle.enemies.filter(e => e.currentHp > 0).forEach(enemy => {
+        const reduction = Math.floor(enemy.atk * debuffAmt);
+        enemy.atk = Math.max(1, enemy.atk - reduction);
+      });
+      addBattleLog(`${user.name}【${skill.name}】敌方全体 ATK 降低！`, 'system');
+      break;
+      
+    case 'single':
+      if (target) {
+        const reduction = Math.floor(target.atk * debuffAmt);
+        target.atk = Math.max(1, target.atk - reduction);
+        addBattleLog(`${user.name}【${skill.name}】→ ${target.name}，ATK -${reduction}！`, 'system');
+      }
+      break;
+  }
+}
+
+// ==================== 敌人AI ====================
+
+// 敌人AI主函数
 function enemyAI(enemy) {
   const aliveAllies = battle.allies.filter(a => a.currentHp > 0);
   const aliveEnemies = battle.enemies.filter(e => e.currentHp > 0);
   if (aliveAllies.length === 0) return;
   
-  // 选择技能
   const skill = chooseEnemySkill(enemy, aliveAllies, aliveEnemies);
-  
-  // 执行技能
   executeEnemySkill(enemy, skill, aliveAllies, aliveEnemies);
   
   renderBattle();
@@ -392,51 +442,51 @@ function enemyAI(enemy) {
 function chooseEnemySkill(enemy, aliveAllies, aliveEnemies) {
   const skills = enemy.skills || ['普攻'];
   
-  // 如果只有普攻
+  // 只有普攻
   if (skills.length === 1) {
-    return SKILL_EFFECTS['普攻'];
+    return { ...SKILL_EFFECTS['普攻'], name: '普攻' };
   }
   
-  // 智能选择
   const hpPercent = enemy.currentHp / enemy.maxHp;
-  
-  // 检查是否有友军需要治疗
   const injuredAllies = aliveEnemies.filter(e => e.currentHp / e.maxHp < 0.5);
   
   // 有治疗技能且有友军受伤
   if (injuredAllies.length > 0) {
-    if (skills.includes('群体治疗') && injuredAllies.length >= 2) {
+    if (skills.includes('群体治疗') && injuredAllies.length >= 2 && SKILL_EFFECTS['群体治疗']) {
       return { ...SKILL_EFFECTS['群体治疗'], name: '群体治疗' };
     }
-    if (skills.includes('战地治疗')) {
+    if (skills.includes('战地治疗') && SKILL_EFFECTS['战地治疗']) {
       return { ...SKILL_EFFECTS['战地治疗'], name: '战地治疗' };
     }
   }
   
   // 血量低时狂暴
-  if (hpPercent < 0.3 && skills.includes('狂暴')) {
+  if (hpPercent < 0.3 && skills.includes('狂暴') && SKILL_EFFECTS['狂暴']) {
     return { ...SKILL_EFFECTS['狂暴'], name: '狂暴' };
+  }
+  
+  // 血量低时鼓舞
+  if (hpPercent < 0.5 && skills.includes('鼓舞') && SKILL_EFFECTS['鼓舞']) {
+    return { ...SKILL_EFFECTS['鼓舞'], name: '鼓舞' };
   }
   
   // 多目标时用群攻
   if (aliveAllies.length >= 3) {
-    if (skills.includes('烈焰风暴')) {
+    if (skills.includes('烈焰风暴') && SKILL_EFFECTS['烈焰风暴']) {
       return { ...SKILL_EFFECTS['烈焰风暴'], name: '烈焰风暴' };
     }
-    if (skills.includes('横扫')) {
+    if (skills.includes('横扫') && SKILL_EFFECTS['横扫']) {
       return { ...SKILL_EFFECTS['横扫'], name: '横扫' };
     }
   }
   
-  // 随机使用强力单体技能
-  const damageSkills = skills.filter(s => {
-    const effect = SKILL_EFFECTS[s];
-    return effect && effect.type === 'damage' && s !== '普攻';
-  });
-  
-  if (damageSkills.length > 0 && Math.random() < 0.6) {
-    const chosen = damageSkills[Math.floor(Math.random() * damageSkills.length)];
-    return { ...SKILL_EFFECTS[chosen], name: chosen };
+  // 60%概率使用特殊技能
+  if (Math.random() < 0.6) {
+    const specialSkills = skills.filter(s => s !== '普攻' && SKILL_EFFECTS[s]);
+    if (specialSkills.length > 0) {
+      const chosen = specialSkills[Math.floor(Math.random() * specialSkills.length)];
+      return { ...SKILL_EFFECTS[chosen], name: chosen };
+    }
   }
   
   // 默认普攻
@@ -465,6 +515,51 @@ function executeEnemySkill(enemy, skill, aliveAllies, aliveEnemies) {
   }
 }
 
+// 智能选择目标
+function chooseTarget(enemy, aliveAllies) {
+  const calcExpectedDmg = (t) => Math.max(1, Math.floor(enemy.atk - t.def * 0.5));
+  
+  const scores = aliveAllies.map(target => {
+    let score = 0;
+    const expectedDmg = calcExpectedDmg(target);
+    
+    // 能击杀：最高优先
+    if (target.currentHp <= expectedDmg) score += 1000;
+    // 残血
+    if (target.currentHp / target.maxHp < 0.3) score += 200;
+    // 治疗角色
+    if (target.skills && target.skills.some(s => s.includes('治疗') || s.includes('群疗'))) score += 150;
+    // 能量快满
+    if (target.energy >= 70) score += 100;
+    // 高攻击力
+    const maxAtk = Math.max(...aliveAllies.map(a => a.atk));
+    score += (target.atk / maxAtk) * 80;
+    // 随机扰动
+    score += Math.random() * 30;
+    
+    return { target, score };
+  });
+  
+  scores.sort((a, b) => b.score - a.score);
+  return scores[0].target;
+}
+
+// 获取AI策略描述
+function getStrategy(enemy, target, aliveAllies) {
+  const calcExpectedDmg = (t) => Math.max(1, Math.floor(enemy.atk - t.def * 0.5));
+  const expectedDmg = calcExpectedDmg(target);
+  
+  if (target.currentHp <= expectedDmg) return '补刀';
+  if (target.currentHp / target.maxHp < 0.3) return '集火残血';
+  if (target.skills && target.skills.some(s => s.includes('治疗') || s.includes('群疗'))) return '针对治疗';
+  if (target.energy >= 70) return '阻断大招';
+  
+  const maxAtk = Math.max(...aliveAllies.map(a => a.atk));
+  if (target.atk >= maxAtk * 0.9) return '压制输出';
+  
+  return '择优攻击';
+}
+
 // 敌人伤害技能
 function executeEnemyDamage(enemy, skill, atk, aliveAllies) {
   const calcDamage = (t) => Math.max(1, Math.floor(atk * skill.multiplier - t.def * 0.5));
@@ -478,15 +573,16 @@ function executeEnemyDamage(enemy, skill, atk, aliveAllies) {
     case 'single': {
       const target = chooseTarget(enemy, aliveAllies);
       const dmg = calcDamage(target);
+      const strategy = getStrategy(enemy, target, aliveAllies);
       applyDamage(target, dmg);
-      addBattleLog(`${enemy.name}【${skill.name}】→ ${target.name}，${dmg} 伤害！`, 'damage');
+      addBattleLog(`${enemy.name}【${strategy}·${skill.name}】→ ${target.name}，${dmg} 伤害！`, 'damage');
       if (target.currentHp <= 0) {
         addBattleLog(`💀 ${target.name} 被击败！`, 'system');
       }
       break;
     }
     case 'all_enemy': {
-      addBattleLog(`${enemy.name} 使用【${skill.name}】！`, 'damage');
+      addBattleLog(`${enemy.name}【群攻·${skill.name}】！`, 'damage');
       aliveAllies.forEach(target => {
         const dmg = calcDamage(target);
         applyDamage(target, dmg);
@@ -498,8 +594,23 @@ function executeEnemyDamage(enemy, skill, atk, aliveAllies) {
       break;
     }
     case 'random2': {
-      addBattleLog(`${enemy.name} 使用【${skill.name}】！`, 'damage');
+      addBattleLog(`${enemy.name}【连击·${skill.name}】！`, 'damage');
       for (let i = 0; i < 2; i++) {
+        const alive = aliveAllies.filter(a => a.currentHp > 0);
+        if (alive.length === 0) break;
+        const target = alive[Math.floor(Math.random() * alive.length)];
+        const dmg = calcDamage(target);
+        applyDamage(target, dmg);
+        addBattleLog(`  → ${target.name} 受到 ${dmg} 伤害！`, 'damage');
+        if (target.currentHp <= 0) {
+          addBattleLog(`💀 ${target.name} 被击败！`, 'system');
+        }
+      }
+      break;
+    }
+    case 'random3': {
+      addBattleLog(`${enemy.name}【连击·${skill.name}】！`, 'damage');
+      for (let i = 0; i < 3; i++) {
         const alive = aliveAllies.filter(a => a.currentHp > 0);
         if (alive.length === 0) break;
         const target = alive[Math.floor(Math.random() * alive.length)];
@@ -553,30 +664,7 @@ function executeEnemyDebuff(enemy, skill, atk, aliveAllies) {
   addBattleLog(`${enemy.name}【${skill.name}】→ ${target.name}，DEF -${debuffAmt}！`, 'system');
 }
 
-// 选择目标（智能）
-function chooseTarget(enemy, aliveAllies) {
-  const calcExpectedDmg = (t) => Math.max(1, Math.floor(enemy.atk - t.def * 0.5));
-  
-  const scores = aliveAllies.map(target => {
-    let score = 0;
-    const expectedDmg = calcExpectedDmg(target);
-    
-    if (target.currentHp <= expectedDmg) score += 1000;
-    if (target.currentHp / target.maxHp < 0.3) score += 200;
-    if (target.skills.some(s => s.includes('治疗'))) score += 150;
-    if (target.energy >= 70) score += 100;
-    
-    const maxAtk = Math.max(...aliveAllies.map(a => a.atk));
-    score += (target.atk / maxAtk) * 80;
-    
-    score += Math.random() * 30;
-    
-    return { target, score };
-  });
-  
-  scores.sort((a, b) => b.score - a.score);
-  return scores[0].target;
-}
+// ==================== 战斗结束 ====================
 
 // 结束战斗
 function endBattle(victory) {
