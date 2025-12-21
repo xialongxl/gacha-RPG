@@ -3,14 +3,14 @@
 // Spine播放器实例管理
 const spineInstances = new Map();
 
-// 创建Spine播放器（3.8版本）
+// 创建Spine播放器（官方3.8版本）
 function createSpinePlayer(containerId, spineData) {
   if (!spineData || !spineData.skel || !spineData.atlas) {
     console.warn('Spine数据不完整');
     return false;
   }
   
-  if (typeof spine === 'undefined' || !spine.SpinePlayer) {
+  if (typeof spine === 'undefined') {
     console.warn('Spine库未加载');
     return false;
   }
@@ -24,16 +24,16 @@ function createSpinePlayer(containerId, spineData) {
         skelUrl: spineData.skel,
         atlasUrl: spineData.atlas,
         animation: spineData.animation || 'Idle',
+        premultipliedAlpha: true,
         backgroundColor: '#00000000',
         alpha: true,
-        premultipliedAlpha: false,
         showControls: false,
         showLoading: false,
         success: function(player) {
           console.log('Spine加载成功:', containerId);
         },
-        error: function(player, reason) {
-          console.error('Spine加载失败:', reason);
+        error: function(player, msg) {
+          console.error('Spine加载失败:', msg);
           showPlaceholder(containerId);
         }
       });
@@ -63,7 +63,7 @@ function createCharMedia(charData, charName, className, width, height) {
   
   const containerId = `char-${charName.replace(/\s/g, '_')}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
   
-  // 严格检查 spine 配置是否完整
+  // 严格检查spine配置
   if (charData && charData.spine && charData.spine.skel && charData.spine.atlas) {
     createSpinePlayer(containerId, charData.spine);
     return `<div id="${containerId}" class="${className} spine-container" style="width:${width}px;height:${height}px;"></div>`;
