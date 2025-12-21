@@ -623,3 +623,17 @@ body {
 .spine-player-canvas {
   background: transparent !important;
 }
+
+/* 隐藏Spine logo */
+.spine-player-logo {
+  display: none !important;
+}
+
+.spine-container {
+  overflow: hidden;
+}
+
+.spine-container canvas {
+  max-width: 100%;
+  max-height: 100%;
+}

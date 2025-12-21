@@ -3,8 +3,8 @@
 // Spine播放器实例管理
 const spineInstances = new Map();
 
-// 创建Spine播放器（官方3.8版本）
-function createSpinePlayer(containerId, spineData) {
+// 创建Spine播放器（官方3.8版本 - 修复版）
+function createSpinePlayer(containerId, spineData, width, height) {
   if (!spineData || !spineData.skel || !spineData.atlas) {
     console.warn('Spine数据不完整');
     return false;
@@ -29,8 +29,23 @@ function createSpinePlayer(containerId, spineData) {
         alpha: true,
         showControls: false,
         showLoading: false,
+        preserveDrawingBuffer: true,
+        viewport: {
+          debugRender: false,
+          x: -200,
+          y: -50,
+          width: 400,
+          height: 400,
+          padLeft: 0,
+          padRight: 0,
+          padTop: 0,
+          padBottom: 0
+        },
         success: function(player) {
           console.log('Spine加载成功:', containerId);
+          // 隐藏logo
+          const logo = container.querySelector('.spine-player-logo');
+          if (logo) logo.style.display = 'none';
         },
         error: function(player, msg) {
           console.error('Spine加载失败:', msg);
@@ -58,18 +73,16 @@ function showPlaceholder(containerId) {
 
 // 生成角色媒体元素
 function createCharMedia(charData, charName, className, width, height) {
-  width = width || 100;
-  height = height || 120;
+  width = width || 120;
+  height = height || 150;
   
   const containerId = `char-${charName.replace(/\s/g, '_')}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
   
-  // 严格检查spine配置
   if (charData && charData.spine && charData.spine.skel && charData.spine.atlas) {
-    createSpinePlayer(containerId, charData.spine);
-    return `<div id="${containerId}" class="${className} spine-container" style="width:${width}px;height:${height}px;"></div>`;
+    createSpinePlayer(containerId, charData.spine, width, height);
+    return `<div id="${containerId}" class="${className} spine-container" style="width:${width}px;height:${height}px;overflow:hidden;"></div>`;
   }
   
-  // 没有spine资源，显示占位符
   return `<div class="img-placeholder ${className}" style="width:${width}px;height:${height}px;display:flex;align-items:center;justify-content:center;">👤</div>`;
 }
 
@@ -107,7 +120,7 @@ function showGachaResult(results) {
       const card = document.createElement('div');
       card.className = `card ${r.rarity.toLowerCase()}`;
       
-      const mediaHtml = createCharMedia(data, r.name, 'card-spine', 90, 110);
+      const mediaHtml = createCharMedia(data, r.name, 'card-spine', 100, 130);
       
       card.innerHTML = `
         ${mediaHtml}
