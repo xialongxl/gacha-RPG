@@ -51,7 +51,7 @@ function createCharMedia(charData, charName, className, width = 100, height = 12
   const containerId = `char-${charName.replace(/\s/g, '_')}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
   
   // 优先使用spine
-  if (charData && charData.spine) {
+  if (charData && charData.spine && charData.spine.skel && charData.spine.atlas) {
     createSpinePlayer(containerId, charData.spine, width, height);
     return `<div id="${containerId}" class="${className} spine-container" style="width:${width}px;height:${height}px;"></div>`;
   }
