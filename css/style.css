@@ -605,53 +605,57 @@ body {
   border-radius: 8px;
 }
 
-/* Spine播放器样式 */
-.spine-container {
-  overflow: hidden;
-}
+/* ==================== Spine播放器样式 ==================== */
 
-.spine-container canvas {
-  max-width: 100%;
-  max-height: 100%;
-}
-
-/* 隐藏spine默认样式 */
-.spine-player {
-  background: transparent !important;
-}
-
-.spine-player-canvas {
-  background: transparent !important;
-}
-
-/* 隐藏Spine logo */
-.spine-player-logo {
-  display: none !important;
-}
-
-.spine-container {
-  overflow: hidden;
-}
-
-.spine-container canvas {
-  max-width: 100%;
-  max-height: 100%;
-}
 /* 隐藏Spine播放器的logo和控制栏 */
 #spine-player-button-logo,
 .spine-player-button-icon-spine-logo,
+.spine-player-logo,
 .spine-player-controls,
 .spine-player-buttons,
-.spine-player-timeline {
+.spine-player-timeline,
+.spine-player-popup {
   display: none !important;
+  visibility: hidden !important;
+}
+
+/* Spine播放器透明背景 */
+.spine-player,
+.spine-player-canvas {
+  background: transparent !important;
 }
 
 /* Spine容器样式 */
 .spine-container {
   overflow: hidden !important;
+  position: relative;
 }
 
 .spine-container .spine-player {
   width: 100% !important;
   height: 100% !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+}
+
+.spine-container .spine-player-canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* 调整卡片大小适配spine */
+.card {
+  width: 130px;
+  height: 200px;
+}
+
+.team-slot {
+  width: 140px;
+  height: 220px;
+}
+
+.char-item {
+  width: 120px;
+  height: 190px;
 }
