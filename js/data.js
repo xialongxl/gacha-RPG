@@ -6,6 +6,7 @@ const CHARACTER_DATA = {
   '银灰': { rarity: 'SSR', hp: 850, atk: 200, def: 50, spd: 85, skills: ['普攻', '真银斩', '强化'] },
   '艾雅法拉': { rarity: 'SSR', hp: 600, atk: 220, def: 40, spd: 80, skills: ['普攻', '火山', '灼烧'] },
   '凯尔希': { rarity: 'SSR', hp: 750, atk: 160, def: 65, spd: 88, skills: ['普攻', 'Mon3tr', '治疗'] },
+  '铃兰': { rarity: 'SSR', hp: 700, atk: 120, def: 55, spd: 85, skills: ['普攻', '强化', '群疗'] },
   // SR
   '德克萨斯': { rarity: 'SR', hp: 650, atk: 130, def: 55, spd: 95, skills: ['普攻', '剑雨', '眩晕'] },
   '蓝毒': { rarity: 'SR', hp: 550, atk: 140, def: 45, spd: 92, skills: ['普攻', '毒刺', '连射'] },
