@@ -371,19 +371,95 @@ function executeBuffSkill(skill, user, atk) {
   }
 }
 
-// 敌人AI
+// 敌人AI（完整智能版）
 function enemyAI(enemy) {
   const aliveAllies = battle.allies.filter(a => a.currentHp > 0);
   if (aliveAllies.length === 0) return;
   
-  const target = aliveAllies[Math.floor(Math.random() * aliveAllies.length)];
-  const dmg = Math.floor(enemy.atk - target.def * 0.5);
-  const finalDmg = Math.max(1, dmg);
+  // 计算对目标的预期伤害
+  const calcExpectedDmg = (target) => {
+    return Math.max(1, Math.floor(enemy.atk - target.def * 0.5));
+  };
   
-  target.currentHp -= finalDmg;
+  // 评估每个目标的分数（分数越高越优先攻击）
+  const evaluateTarget = (target) => {
+    let score = 0;
+    const expectedDmg = calcExpectedDmg(target);
+    
+    // 1. 能击杀：+1000分（最高优先级）
+    if (target.currentHp <= expectedDmg) {
+      score += 1000;
+    }
+    
+    // 2. 残血（HP < 30%）：+200分
+    if (target.currentHp / target.maxHp < 0.3) {
+      score += 200;
+    }
+    
+    // 3. 是治疗角色：+150分
+    if (target.skills.some(s => s.includes('治疗') || s.includes('群疗'))) {
+      score += 150;
+    }
+    
+    // 4. 能量快满（>=70）：+100分（阻止大招）
+    if (target.energy >= 70) {
+      score += 100;
+    }
+    
+    // 5. 攻击力高：+0~80分
+    const maxAtk = Math.max(...aliveAllies.map(a => a.atk));
+    score += (target.atk / maxAtk) * 80;
+    
+    // 6. 防御低（伤害效率高）：+0~50分
+    const minDef = Math.min(...aliveAllies.map(a => a.def));
+    const maxDef = Math.max(...aliveAllies.map(a => a.def));
+    if (maxDef > minDef) {
+      score += ((maxDef - target.def) / (maxDef - minDef)) * 50;
+    }
+    
+    // 7. 随机扰动：+0~30分（增加不确定性）
+    score += Math.random() * 30;
+    
+    return score;
+  };
+  
+  // 评估所有目标
+  const targetScores = aliveAllies.map(target => ({
+    target,
+    score: evaluateTarget(target)
+  }));
+  
+  // 按分数排序，选最高的
+  targetScores.sort((a, b) => b.score - a.score);
+  const chosen = targetScores[0];
+  const target = chosen.target;
+  
+  // 生成AI思考日志（可选，帮助理解AI决策）
+  let reason = '';
+  if (target.currentHp <= calcExpectedDmg(target)) {
+    reason = '补刀！';
+  } else if (target.currentHp / target.maxHp < 0.3) {
+    reason = '集火残血';
+  } else if (target.skills.some(s => s.includes('治疗'))) {
+    reason = '针对治疗';
+  } else if (target.energy >= 70) {
+    reason = '阻断大招';
+  } else if (target.atk >= Math.max(...aliveAllies.map(a => a.atk)) * 0.9) {
+    reason = '压制输出';
+  } else {
+    reason = '择优攻击';
+  }
+  
+  // 执行攻击
+  const dmg = calcExpectedDmg(target);
+  target.currentHp -= dmg;
   target.energy = Math.min(target.maxEnergy, target.energy + 20);
   
-  addBattleLog(`${enemy.name} → ${target.name}，${finalDmg} 伤害！`, 'damage');
+  addBattleLog(`${enemy.name}【${reason}】→ ${target.name}，${dmg} 伤害！`, 'damage');
+  
+  if (target.currentHp <= 0) {
+    addBattleLog(`💀 ${target.name} 被击败！`, 'system');
+  }
   
   renderBattle();
   battle.currentTurn++;
