@@ -1,32 +1,64 @@
-// UI 更新函数
-// 生成角色媒体元素（支持webm视频和图片）
-function createCharMedia(src, alt, className) {
-  if (!src) {
-    return `<div class="img-placeholder ${className}" style="width:100%;height:100%;">👤</div>`;
+// ==================== UI通用函数 ====================
+
+// Spine播放器实例管理
+const spineInstances = new Map();
+
+// 创建Spine播放器
+function createSpinePlayer(containerId, spineData, width, height) {
+  if (!spineData || !window.spine) {
+    console.warn('Spine库未加载或数据为空');
+    return false;
   }
   
-  const isVideo = src.endsWith('.webm') || src.endsWith('.mp4');
+  setTimeout(() => {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    
+    try {
+      const player = new spine.SpinePlayer(containerId, {
+        skeleton: spineData.skel,
+        atlas: spineData.atlas,
+        animation: spineData.animation || 'Idle',
+        backgroundColor: '#00000000',
+        alpha: true,
+        premultipliedAlpha: false,
+        showControls: false,
+        showLoading: false,
+        preserveDrawingBuffer: true,
+        success: function(player) {
+          console.log('Spine加载成功:', containerId);
+        },
+        error: function(player, reason) {
+          console.error('Spine加载失败:', reason);
+          const cont = document.getElementById(containerId);
+          if (cont) {
+            cont.innerHTML = '<div class="img-placeholder" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;">👤</div>';
+          }
+        }
+      });
+      
+      spineInstances.set(containerId, player);
+    } catch (e) {
+      console.error('Spine初始化失败:', e);
+      container.innerHTML = '<div class="img-placeholder" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;">👤</div>';
+    }
+  }, 100);
   
-  if (isVideo) {
-    return `
-      <video class="${className}" 
-             src="${src}" 
-             autoplay 
-             loop 
-             muted 
-             playsinline
-             onerror="this.outerHTML='<div class=\\'img-placeholder ${className}\\'>?</div>'"
-      ></video>
-    `;
-  } else {
-    return `
-      <img class="${className}" 
-           src="${src}" 
-           alt="${alt}"
-           onerror="this.outerHTML='<div class=\\'img-placeholder ${className}\\'>?</div>'"
-      >
-    `;
+  return true;
+}
+
+// 生成角色媒体元素
+function createCharMedia(charData, charName, className, width = 100, height = 120) {
+  const containerId = `char-${charName.replace(/\s/g, '_')}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+  
+  // 优先使用spine
+  if (charData && charData.spine) {
+    createSpinePlayer(containerId, charData.spine, width, height);
+    return `<div id="${containerId}" class="${className} spine-container" style="width:${width}px;height:${height}px;"></div>`;
   }
+  
+  // 没有spine资源，显示占位符
+  return `<div class="img-placeholder ${className}" style="width:${width}px;height:${height}px;display:flex;align-items:center;justify-content:center;">👤</div>`;
 }
 
 // 更新资源显示
@@ -39,17 +71,12 @@ function updateResourceUI() {
 
 // 页面切换
 function showPage(pageName) {
-  // 隐藏所有页面
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  // 移除所有导航按钮高亮
   document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
   
-  // 显示目标页面
   document.getElementById(`page-${pageName}`).classList.add('active');
-  // 高亮对应按钮
   document.querySelector(`.nav button[data-page="${pageName}"]`).classList.add('active');
   
-  // 页面特定更新
   if (pageName === 'team') {
     updateTeamUI();
   } else if (pageName === 'battle') {
@@ -68,7 +95,7 @@ function showGachaResult(results) {
       const card = document.createElement('div');
       card.className = `card ${r.rarity.toLowerCase()}`;
       
-      const mediaHtml = createCharMedia(data.img, r.name, 'card-video');
+      const mediaHtml = createCharMedia(data, r.name, 'card-spine', 90, 110);
       
       card.innerHTML = `
         ${mediaHtml}

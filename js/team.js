@@ -1,4 +1,4 @@
-// 队伍系统
+// ==================== 队伍系统 ====================
 
 // 更新队伍UI
 function updateTeamUI() {
@@ -17,7 +17,7 @@ function renderTeamSlots() {
     
     if (charName) {
       const data = CHARACTER_DATA[charName];
-      const mediaHtml = createCharMedia(data.img, charName, 'slot-video');
+      const mediaHtml = createCharMedia(data, charName, 'slot-spine', 100, 120);
       
       slot.innerHTML = `
         ${mediaHtml}
@@ -26,7 +26,7 @@ function renderTeamSlots() {
       `;
     } else {
       slot.innerHTML = `
-        <div class="img-placeholder" style="width:80px;height:100px;">+</div>
+        <div class="img-placeholder" style="width:100px;height:120px;display:flex;align-items:center;justify-content:center;font-size:32px;">+</div>
         <div class="slot-name">空槽位</div>
         <div class="slot-info">点击选择</div>
       `;
@@ -54,7 +54,7 @@ function renderCharacterList() {
     const item = document.createElement('div');
     item.className = `char-item ${data.rarity.toLowerCase()}`;
     
-    const mediaHtml = createCharMedia(data.img, name, 'char-video');
+    const mediaHtml = createCharMedia(data, name, 'char-spine', 80, 100);
     
     item.innerHTML = `
       ${mediaHtml}
@@ -70,42 +70,9 @@ function renderCharacterList() {
   }
 }
 
-// 渲染角色列表
-function renderCharacterList() {
-  const listDiv = document.getElementById('char-list');
-  listDiv.innerHTML = '';
-  
-  // 按稀有度排序
-  const sortOrder = { SSR: 0, SR: 1, R: 2, N: 3 };
-  const sorted = Object.entries(state.inventory).sort((a, b) => {
-    const rarityA = CHARACTER_DATA[a[0]].rarity;
-    const rarityB = CHARACTER_DATA[b[0]].rarity;
-    return sortOrder[rarityA] - sortOrder[rarityB];
-  });
-  
-  sorted.forEach(([name, info]) => {
-    const data = CHARACTER_DATA[name];
-    const item = document.createElement('div');
-    item.className = `char-item ${data.rarity.toLowerCase()}`;
-    item.innerHTML = `
-      <div class="char-name">${name}</div>
-      <div class="char-stats">HP: ${data.hp}</div>
-      <div class="char-stats">ATK: ${data.atk}</div>
-      <div class="char-stats">持有: x${info.count}</div>
-    `;
-    item.onclick = () => assignToSlot(name);
-    listDiv.appendChild(item);
-  });
-  
-  if (sorted.length === 0) {
-    listDiv.innerHTML = '<div style="color:#aaa;">还没有角色，去抽卡吧！</div>';
-  }
-}
-
 // 选择槽位
 function selectSlot(index) {
   if (selectedSlot === index) {
-    // 再次点击取消选择，或移除角色
     if (state.team[index]) {
       state.team[index] = null;
       saveState();
@@ -124,13 +91,11 @@ function assignToSlot(charName) {
     return;
   }
   
-  // 如果角色已在队伍中，先移除
   const existingIndex = state.team.indexOf(charName);
   if (existingIndex !== -1) {
     state.team[existingIndex] = null;
   }
   
-  // 分配到选中槽位
   state.team[selectedSlot] = charName;
   selectedSlot = null;
   

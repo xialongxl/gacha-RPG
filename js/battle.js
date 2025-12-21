@@ -38,7 +38,6 @@ function startBattle(stage) {
   battle.active = true;
   battle.stage = stage;
   
-  // 初始化我方单位
   battle.allies = team.map(name => {
     const data = CHARACTER_DATA[name];
     return {
@@ -58,7 +57,6 @@ function startBattle(stage) {
     };
   });
   
-  // 初始化敌方单位
   battle.enemies = stage.enemies.map(e => ({
     name: e.name,
     hp: e.hp,
@@ -112,15 +110,14 @@ function renderBattleSide(containerId, units, title, isEnemy) {
     const div = document.createElement('div');
     div.className = `battle-unit ${isEnemy ? 'enemy' : ''} ${isDead ? 'dead' : ''} ${isActing ? 'acting' : ''}`;
     
-    // 获取媒体
     const charData = CHARACTER_DATA[unit.name];
     let avatarHtml;
     
-    if (charData && charData.img) {
-      avatarHtml = createCharMedia(charData.img, unit.name, 'unit-video');
+    if (charData && charData.spine) {
+      avatarHtml = createCharMedia(charData, unit.name, 'unit-spine', 80, 100);
     } else {
       const emoji = isEnemy ? '👹' : '👤';
-      avatarHtml = `<div class="img-placeholder" style="width:50px;height:60px;">${emoji}</div>`;
+      avatarHtml = `<div class="img-placeholder" style="width:80px;height:100px;display:flex;align-items:center;justify-content:center;font-size:32px;">${emoji}</div>`;
     }
     
     let infoHtml = `
@@ -442,7 +439,6 @@ function enemyAI(enemy) {
 function chooseEnemySkill(enemy, aliveAllies, aliveEnemies) {
   const skills = enemy.skills || ['普攻'];
   
-  // 只有普攻
   if (skills.length === 1) {
     return { ...SKILL_EFFECTS['普攻'], name: '普攻' };
   }
@@ -450,7 +446,6 @@ function chooseEnemySkill(enemy, aliveAllies, aliveEnemies) {
   const hpPercent = enemy.currentHp / enemy.maxHp;
   const injuredAllies = aliveEnemies.filter(e => e.currentHp / e.maxHp < 0.5);
   
-  // 有治疗技能且有友军受伤
   if (injuredAllies.length > 0) {
     if (skills.includes('群体治疗') && injuredAllies.length >= 2 && SKILL_EFFECTS['群体治疗']) {
       return { ...SKILL_EFFECTS['群体治疗'], name: '群体治疗' };
@@ -460,17 +455,14 @@ function chooseEnemySkill(enemy, aliveAllies, aliveEnemies) {
     }
   }
   
-  // 血量低时狂暴
   if (hpPercent < 0.3 && skills.includes('狂暴') && SKILL_EFFECTS['狂暴']) {
     return { ...SKILL_EFFECTS['狂暴'], name: '狂暴' };
   }
   
-  // 血量低时鼓舞
   if (hpPercent < 0.5 && skills.includes('鼓舞') && SKILL_EFFECTS['鼓舞']) {
     return { ...SKILL_EFFECTS['鼓舞'], name: '鼓舞' };
   }
   
-  // 多目标时用群攻
   if (aliveAllies.length >= 3) {
     if (skills.includes('烈焰风暴') && SKILL_EFFECTS['烈焰风暴']) {
       return { ...SKILL_EFFECTS['烈焰风暴'], name: '烈焰风暴' };
@@ -480,7 +472,6 @@ function chooseEnemySkill(enemy, aliveAllies, aliveEnemies) {
     }
   }
   
-  // 60%概率使用特殊技能
   if (Math.random() < 0.6) {
     const specialSkills = skills.filter(s => s !== '普攻' && SKILL_EFFECTS[s]);
     if (specialSkills.length > 0) {
@@ -489,7 +480,6 @@ function chooseEnemySkill(enemy, aliveAllies, aliveEnemies) {
     }
   }
   
-  // 默认普攻
   return { ...SKILL_EFFECTS['普攻'], name: '普攻' };
 }
 
@@ -523,18 +513,13 @@ function chooseTarget(enemy, aliveAllies) {
     let score = 0;
     const expectedDmg = calcExpectedDmg(target);
     
-    // 能击杀：最高优先
     if (target.currentHp <= expectedDmg) score += 1000;
-    // 残血
     if (target.currentHp / target.maxHp < 0.3) score += 200;
-    // 治疗角色
     if (target.skills && target.skills.some(s => s.includes('治疗') || s.includes('群疗'))) score += 150;
-    // 能量快满
     if (target.energy >= 70) score += 100;
-    // 高攻击力
+    
     const maxAtk = Math.max(...aliveAllies.map(a => a.atk));
     score += (target.atk / maxAtk) * 80;
-    // 随机扰动
     score += Math.random() * 30;
     
     return { target, score };
