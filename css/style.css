@@ -1,3 +1,4 @@
+/* ==================== 基础样式 ==================== */
 * {
   margin: 0;
   padding: 0;
@@ -17,7 +18,7 @@ body {
   padding: 20px;
 }
 
-/* ========== 导航 ========== */
+/* ==================== 导航 ==================== */
 .nav {
   display: flex;
   justify-content: center;
@@ -41,7 +42,7 @@ body {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
-/* ========== 页面切换 ========== */
+/* ==================== 页面切换 ==================== */
 .page {
   display: none;
 }
@@ -50,7 +51,7 @@ body {
   display: block;
 }
 
-/* ========== 通用面板 ========== */
+/* ==================== 通用面板 ==================== */
 .panel {
   background: rgba(255,255,255,0.05);
   border-radius: 15px;
@@ -64,7 +65,7 @@ body {
   color: #f0f0f0;
 }
 
-/* ========== 资源栏 ========== */
+/* ==================== 资源栏 ==================== */
 .resources {
   display: flex;
   justify-content: center;
@@ -80,7 +81,7 @@ body {
   font-size: 14px;
 }
 
-/* ========== 按钮 ========== */
+/* ==================== 按钮 ==================== */
 .btn {
   padding: 12px 25px;
   font-size: 14px;
@@ -117,7 +118,7 @@ body {
   background: linear-gradient(135deg, #f5af19 0%, #f12711 100%);
 }
 
-/* ========== 抽卡页 ========== */
+/* ==================== 抽卡页 ==================== */
 .gacha-banner {
   text-align: center;
   padding: 30px;
@@ -143,23 +144,21 @@ body {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 10px;
+  gap: 12px;
   min-height: 120px;
   padding: 20px;
 }
 
+/* 抽卡卡片 */
 .card {
-  width: 80px;
-  height: 110px;
-  border-radius: 8px;
+  width: 100px;
+  height: 160px;
+  border-radius: 10px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  overflow: hidden;
   animation: cardIn 0.5s ease;
-  font-size: 12px;
-  text-align: center;
-  padding: 5px;
 }
 
 @keyframes cardIn {
@@ -169,7 +168,7 @@ body {
 
 .card.ssr {
   background: linear-gradient(135deg, #f5af19 0%, #f12711 100%);
-  box-shadow: 0 0 15px rgba(245,175,25,0.5);
+  box-shadow: 0 0 20px rgba(245,175,25,0.5);
 }
 
 .card.sr {
@@ -184,7 +183,31 @@ body {
   background: linear-gradient(135deg, #606060 0%, #404040 100%);
 }
 
-/* ========== 队伍页 ========== */
+.card .card-video,
+.card video {
+  width: 100%;
+  height: 110px;
+  object-fit: contain;
+  object-position: center;
+  background: transparent;
+}
+
+.card .card-info {
+  padding: 5px;
+  text-align: center;
+}
+
+.card .card-rarity {
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.card .card-name {
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+/* ==================== 队伍页 ==================== */
 .team-slots {
   display: flex;
   justify-content: center;
@@ -194,10 +217,10 @@ body {
 }
 
 .team-slot {
-  width: 120px;
-  height: 160px;
+  width: 130px;
+  height: 200px;
   background: rgba(255,255,255,0.1);
-  border-radius: 10px;
+  border-radius: 12px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -205,6 +228,7 @@ body {
   cursor: pointer;
   transition: all 0.3s;
   border: 2px solid transparent;
+  padding: 10px;
 }
 
 .team-slot:hover {
@@ -212,62 +236,85 @@ body {
 }
 
 .team-slot.filled {
-  background: linear-gradient(135deg, rgba(102,126,234,0.3) 0%, rgba(118,75,162,0.3) 100%);
+  background: linear-gradient(135deg, rgba(102,126,234,0.2) 0%, rgba(118,75,162,0.2) 100%);
 }
 
 .team-slot.selected {
   border-color: #f5af19;
-  box-shadow: 0 0 10px rgba(245,175,25,0.5);
+  box-shadow: 0 0 15px rgba(245,175,25,0.5);
+}
+
+.team-slot .slot-video,
+.team-slot video {
+  width: 100px;
+  height: 120px;
+  object-fit: contain;
+  object-position: center;
+  background: transparent;
 }
 
 .team-slot .slot-name {
   font-size: 14px;
-  margin-top: 10px;
+  margin-top: 8px;
 }
 
 .team-slot .slot-info {
   font-size: 11px;
   color: #aaa;
-  margin-top: 5px;
+  margin-top: 4px;
 }
 
 .character-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px;
 }
 
 .char-item {
-  width: 100px;
+  width: 120px;
+  height: 180px;
   padding: 10px;
   background: rgba(255,255,255,0.1);
-  border-radius: 8px;
+  border-radius: 10px;
   text-align: center;
   cursor: pointer;
   transition: all 0.3s;
   border: 2px solid transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .char-item:hover {
   border-color: #667eea;
 }
 
-.char-item.ssr { border-left: 3px solid #f5af19; }
-.char-item.sr { border-left: 3px solid #667eea; }
-.char-item.r { border-left: 3px solid #4facfe; }
-.char-item.n { border-left: 3px solid #888; }
+.char-item.ssr { border-left: 4px solid #f5af19; }
+.char-item.sr { border-left: 4px solid #667eea; }
+.char-item.r { border-left: 4px solid #4facfe; }
+.char-item.n { border-left: 4px solid #888; }
+
+.char-item .char-video,
+.char-item video {
+  width: 90px;
+  height: 110px;
+  object-fit: contain;
+  object-position: center;
+  background: transparent;
+}
 
 .char-item .char-name {
   font-size: 13px;
-  margin-bottom: 5px;
+  margin-top: 5px;
 }
 
 .char-item .char-stats {
   font-size: 11px;
   color: #aaa;
+  margin-top: 3px;
 }
 
-/* ========== 战斗页 ========== */
+/* ==================== 战斗页 ==================== */
 .stage-select {
   display: flex;
   flex-wrap: wrap;
@@ -298,12 +345,13 @@ body {
   display: block;
 }
 
+/* 战斗区域 */
 .battle-area {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 20px;
   gap: 20px;
+  margin-bottom: 20px;
 }
 
 .battle-side {
@@ -315,10 +363,23 @@ body {
   font-size: 16px;
 }
 
+.battle-vs {
+  font-size: 24px;
+  font-weight: bold;
+  color: #f5af19;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+}
+
+/* ==================== 战斗单位（横向布局 + 透明模型） ==================== */
 .battle-unit {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   background: rgba(255,255,255,0.1);
   border-radius: 10px;
-  padding: 15px;
+  padding: 12px;
   margin: 10px 0;
   position: relative;
 }
@@ -335,13 +396,41 @@ body {
   opacity: 0.3;
 }
 
-.unit-name {
+/* 角色模型 - 透明背景 */
+.battle-unit video,
+.battle-unit .unit-video {
+  width: 80px;
+  height: 100px;
+  object-fit: contain;
+  object-position: center;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.battle-unit .img-placeholder {
+  width: 80px;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.08);
+  border-radius: 8px;
+  font-size: 32px;
+  flex-shrink: 0;
+}
+
+.battle-unit .unit-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.battle-unit .unit-name {
   font-size: 14px;
   font-weight: bold;
   margin-bottom: 8px;
 }
 
-.hp-bar {
+.battle-unit .hp-bar {
   height: 8px;
   background: rgba(255,255,255,0.2);
   border-radius: 4px;
@@ -349,28 +438,36 @@ body {
   margin: 5px 0;
 }
 
-.hp-bar-fill {
+.battle-unit .hp-bar-fill {
   height: 100%;
   background: linear-gradient(90deg, #11998e, #38ef7d);
   transition: width 0.3s;
 }
 
-.hp-bar-fill.low {
+.battle-unit .hp-bar-fill.low {
   background: linear-gradient(90deg, #f12711, #f5af19);
 }
 
-.unit-stats {
+.battle-unit .energy-bar {
+  height: 6px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 5px 0;
+}
+
+.battle-unit .energy-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ffd43b, #fab005);
+  transition: width 0.3s;
+}
+
+.battle-unit .unit-stats {
   font-size: 11px;
   color: #aaa;
 }
 
-.battle-vs {
-  font-size: 24px;
-  font-weight: bold;
-  color: #f5af19;
-  padding: 20px;
-}
-
+/* ==================== 战斗日志 ==================== */
 .battle-log {
   background: rgba(0,0,0,0.3);
   border-radius: 10px;
@@ -390,6 +487,7 @@ body {
 .log-entry.heal { color: #51cf66; }
 .log-entry.system { color: #ffd43b; }
 
+/* ==================== 技能按钮 ==================== */
 .skill-buttons {
   display: flex;
   flex-wrap: wrap;
@@ -412,6 +510,21 @@ body {
   transform: scale(1.05);
 }
 
+.skill-btn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: #555;
+  transform: none;
+}
+
+.skill-btn .skill-cost {
+  font-size: 10px;
+  opacity: 0.8;
+  display: block;
+  margin-top: 2px;
+}
+
+/* ==================== 目标选择 ==================== */
 .target-select {
   display: flex;
   gap: 10px;
@@ -443,7 +556,7 @@ body {
   background: rgba(100,255,100,0.5);
 }
 
-/* ========== 结算弹窗 ========== */
+/* ==================== 结算弹窗 ==================== */
 .modal {
   display: none;
   position: fixed;
@@ -482,209 +595,12 @@ body {
 .reward-list p {
   margin: 5px 0;
 }
-/* ========== 能量条 ========== */
-.energy-bar {
-  height: 6px;
-  background: rgba(255,255,255,0.2);
-  border-radius: 3px;
-  overflow: hidden;
-  margin: 3px 0;
-}
 
-.energy-bar-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #ffd43b, #fab005);
-  transition: width 0.3s;
-}
-
-.skill-btn.disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  background: #666;
-}
-
-.skill-btn .skill-cost {
-  font-size: 10px;
-  opacity: 0.8;
-  display: block;
-  margin-top: 2px;
-}
-/* ========== 角色模型(webm) ========== */
-
-/* 通用视频样式 */
-.char-video {
-  object-fit: cover;
-  object-position: center top;
-  background: transparent;
-  pointer-events: none;
-}
-
-/* 抽卡卡片 */
-.card {
-  width: 100px;
-  height: 150px;
-  position: relative;
-  overflow: hidden;
-}
-
-.card .card-video {
-  width: 100%;
-  height: 100px;
-  object-fit: cover;
-  object-position: center top;
-  border-radius: 6px 6px 0 0;
-}
-
-.card .card-info {
-  padding: 5px;
-  text-align: center;
-}
-
-.card .card-rarity {
-  font-size: 11px;
-  font-weight: bold;
-}
-
-.card .card-name {
-  font-size: 12px;
-  margin-top: 2px;
-}
-
-/* 队伍槽位 */
-.team-slot {
-  width: 120px;
-  height: 180px;
-}
-
-.team-slot .slot-video {
-  width: 80px;
-  height: 100px;
-  object-fit: cover;
-  object-position: center top;
-  border-radius: 8px;
-  border: 2px solid rgba(255,255,255,0.2);
-}
-
-/* 角色列表 */
-.char-item {
-  width: 110px;
-  height: 160px;
-  padding: 8px;
-}
-
-.char-item .char-video {
-  width: 70px;
-  height: 90px;
-  object-fit: cover;
-  object-position: center top;
-  border-radius: 6px;
-  margin-bottom: 5px;
-}
-
-/* 战斗单位 */
-/* ========== 战斗单位 ========== */
-.battle-unit {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  background: rgba(255,255,255,0.1);
-  border-radius: 10px;
-  padding: 12px;
-  margin: 10px 0;
-}
-
-.battle-unit.enemy {
-  background: rgba(255,100,100,0.1);
-}
-
-.battle-unit.acting {
-  box-shadow: 0 0 15px rgba(255,255,0,0.5);
-}
-
-.battle-unit.dead {
-  opacity: 0.3;
-}
-
-.battle-unit .unit-video,
-.battle-unit .unit-avatar {
-  width: 80px;
-  height: 100px;
-  object-fit: cover;
-  object-position: center top;
-  border-radius: 8px;
-  flex-shrink: 0;
-  background: rgba(0,0,0,0.3);
-}
-
-.battle-unit .unit-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.battle-unit .unit-name {
-  font-size: 16px;
-  font-weight: bold;
-  margin-bottom: 8px;
-}
-
-.battle-unit .hp-bar {
-  height: 10px;
-  background: rgba(255,255,255,0.2);
-  border-radius: 5px;
-  overflow: hidden;
-  margin: 5px 0;
-}
-
-.battle-unit .hp-bar-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #11998e, #38ef7d);
-  transition: width 0.3s;
-}
-
-.battle-unit .hp-bar-fill.low {
-  background: linear-gradient(90deg, #f12711, #f5af19);
-}
-
-.battle-unit .energy-bar {
-  height: 6px;
-  background: rgba(255,255,255,0.2);
-  border-radius: 3px;
-  overflow: hidden;
-  margin: 5px 0;
-}
-
-.battle-unit .energy-bar-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #ffd43b, #fab005);
-  transition: width 0.3s;
-}
-
-.battle-unit .unit-stats {
-  font-size: 13px;
-  color: #aaa;
-  margin-top: 5px;
-}
-
-/* 占位符也要变大 */
-.battle-unit .img-placeholder {
-  width: 80px;
-  height: 100px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #444, #222);
-  border-radius: 8px;
-  font-size: 28px;
-  flex-shrink: 0;
-}
-
-
-/* 占位符 */
+/* ==================== 通用占位符 ==================== */
 .img-placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #444, #222);
-  border-radius: 6px;
-  font-size: 20px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 8px;
 }
