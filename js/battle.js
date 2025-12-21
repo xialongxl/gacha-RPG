@@ -19,30 +19,25 @@ function updateStageUI() {
 
 // 开始战斗
 function startBattle(stage) {
-  // 检查队伍
   const team = state.team.filter(c => c !== null);
   if (team.length === 0) {
     alert('请先编队！');
     return;
   }
   
-  // 检查体力
   if (state.stamina < stage.stamina) {
     alert('体力不足！');
     return;
   }
   
-  // 扣除体力
   state.stamina -= stage.stamina;
   updateResourceUI();
   saveState();
   
-  // 初始化战斗
   resetBattle();
   battle.active = true;
   battle.stage = stage;
   
-  // 初始化我方单位
   battle.allies = team.map(name => {
     const data = CHARACTER_DATA[name];
     return {
@@ -60,7 +55,6 @@ function startBattle(stage) {
     };
   });
   
-  // 初始化敌方单位
   battle.enemies = stage.enemies.map(e => ({
     name: e.name,
     hp: e.hp,
@@ -74,14 +68,16 @@ function startBattle(stage) {
     isEnemy: true
   }));
   
-  // 切换到战斗界面
   document.getElementById('stage-panel').style.display = 'none';
   document.getElementById('battle-field').classList.add('active');
   
   addBattleLog('⚔️ 战斗开始！', 'system');
-  renderBattle();
   
-  // 开始回合
+  // 初始化回合
+  calculateTurnOrder();
+  battle.currentTurn = 0;
+  
+  renderBattle();
   setTimeout(() => nextTurn(), 500);
 }
 
@@ -125,7 +121,7 @@ function renderBattleSide(containerId, units, title, isEnemy) {
   });
 }
 
-// 下一回合
+// 下一回合（已修复）
 function nextTurn() {
   if (!battle.active) return;
   
@@ -142,26 +138,36 @@ function nextTurn() {
     return;
   }
   
-  // 重新计算行动顺序
-  calculateTurnOrder();
-  if (battle.turnOrder.length === 0) return;
+  // 如果回合用完，重新计算顺序
+  if (battle.currentTurn >= battle.turnOrder.length) {
+    calculateTurnOrder();
+    battle.currentTurn = 0;
+    addBattleLog('--- 新回合 ---', 'system');
+  }
   
-  battle.currentTurn = 0;
-  const current = battle.turnOrder[0];
+  // 获取当前行动单位
+  let current = battle.turnOrder[battle.currentTurn];
   
   // 跳过死亡单位
-  if (current.currentHp <= 0) {
-    setTimeout(() => nextTurn(), 100);
+  while (current && current.currentHp <= 0) {
+    battle.currentTurn++;
+    if (battle.currentTurn >= battle.turnOrder.length) {
+      setTimeout(() => nextTurn(), 500);
+      return;
+    }
+    current = battle.turnOrder[battle.currentTurn];
+  }
+  
+  if (!current) {
+    setTimeout(() => nextTurn(), 500);
     return;
   }
   
   renderBattle();
   
   if (current.isEnemy) {
-    // 敌人AI
     setTimeout(() => enemyAI(current), 800);
   } else {
-    // 玩家操作
     showSkillButtons(current);
   }
 }
@@ -191,13 +197,11 @@ function selectSkill(skillName, unit) {
     user: unit
   };
   
-  // 根据技能类型选择目标
   if (skill.target === 'single') {
     showEnemyTargetSelect();
   } else if (skill.target === 'ally') {
     showAllyTargetSelect();
   } else {
-    // 无需选择目标的技能直接执行
     executeSkill(battle.selectedSkill, null);
   }
 }
@@ -230,16 +234,14 @@ function showAllyTargetSelect() {
   });
 }
 
-// 执行技能
+// 执行技能（已修复）
 function executeSkill(skill, target) {
   const user = skill.user;
   const atk = user.atk + user.buffAtk;
   
-  // 清空按钮
   document.getElementById('skill-buttons').innerHTML = '';
   document.getElementById('target-select').innerHTML = '';
   
-  // 根据技能类型执行
   switch (skill.type) {
     case 'damage':
       executeDamageSkill(skill, user, atk, target);
@@ -253,6 +255,7 @@ function executeSkill(skill, target) {
   }
   
   renderBattle();
+  battle.currentTurn++;  // 修复：增加回合计数
   setTimeout(() => nextTurn(), 1000);
 }
 
@@ -335,15 +338,12 @@ function executeBuffSkill(skill, user, atk) {
   }
 }
 
-// 敌人AI
+// 敌人AI（已修复）
 function enemyAI(enemy) {
   const aliveAllies = battle.allies.filter(a => a.currentHp > 0);
   if (aliveAllies.length === 0) return;
   
-  // 随机选择目标
   const target = aliveAllies[Math.floor(Math.random() * aliveAllies.length)];
-  
-  // 计算伤害
   const dmg = Math.floor(enemy.atk - target.def * 0.5);
   const finalDmg = Math.max(1, dmg);
   target.currentHp -= finalDmg;
@@ -351,6 +351,7 @@ function enemyAI(enemy) {
   addBattleLog(`${enemy.name} 攻击 ${target.name}，造成 ${finalDmg} 伤害！`, 'damage');
   
   renderBattle();
+  battle.currentTurn++;  // 修复：增加回合计数
   setTimeout(() => nextTurn(), 1000);
 }
 
