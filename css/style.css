@@ -582,24 +582,102 @@ body {
 }
 
 /* 战斗单位 */
+/* ========== 战斗单位 ========== */
 .battle-unit {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 15px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 10px;
+  padding: 12px;
+  margin: 10px 0;
 }
 
-.battle-unit .unit-video {
-  width: 50px;
-  height: 60px;
+.battle-unit.enemy {
+  background: rgba(255,100,100,0.1);
+}
+
+.battle-unit.acting {
+  box-shadow: 0 0 15px rgba(255,255,0,0.5);
+}
+
+.battle-unit.dead {
+  opacity: 0.3;
+}
+
+.battle-unit .unit-video,
+.battle-unit .unit-avatar {
+  width: 80px;
+  height: 100px;
   object-fit: cover;
   object-position: center top;
-  border-radius: 6px;
+  border-radius: 8px;
   flex-shrink: 0;
+  background: rgba(0,0,0,0.3);
 }
 
 .battle-unit .unit-info {
   flex: 1;
+  min-width: 0;
 }
+
+.battle-unit .unit-name {
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.battle-unit .hp-bar {
+  height: 10px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 5px;
+  overflow: hidden;
+  margin: 5px 0;
+}
+
+.battle-unit .hp-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #11998e, #38ef7d);
+  transition: width 0.3s;
+}
+
+.battle-unit .hp-bar-fill.low {
+  background: linear-gradient(90deg, #f12711, #f5af19);
+}
+
+.battle-unit .energy-bar {
+  height: 6px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 5px 0;
+}
+
+.battle-unit .energy-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ffd43b, #fab005);
+  transition: width 0.3s;
+}
+
+.battle-unit .unit-stats {
+  font-size: 13px;
+  color: #aaa;
+  margin-top: 5px;
+}
+
+/* 占位符也要变大 */
+.battle-unit .img-placeholder {
+  width: 80px;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #444, #222);
+  border-radius: 8px;
+  font-size: 28px;
+  flex-shrink: 0;
+}
+
 
 /* 占位符 */
 .img-placeholder {
