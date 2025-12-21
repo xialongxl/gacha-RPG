@@ -3,8 +3,8 @@
 // Spine播放器实例管理
 const spineInstances = new Map();
 
-// 创建Spine播放器（官方3.8版本 - 修复版）
-function createSpinePlayer(containerId, spineData, width, height) {
+// 创建Spine播放器（官方3.8版本 - 完整修复版）
+function createSpinePlayer(containerId, spineData) {
   if (!spineData || !spineData.skel || !spineData.atlas) {
     console.warn('Spine数据不完整');
     return false;
@@ -79,7 +79,7 @@ function createCharMedia(charData, charName, className, width, height) {
   const containerId = `char-${charName.replace(/\s/g, '_')}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
   
   if (charData && charData.spine && charData.spine.skel && charData.spine.atlas) {
-    createSpinePlayer(containerId, charData.spine, width, height);
+    createSpinePlayer(containerId, charData.spine);
     return `<div id="${containerId}" class="${className} spine-container" style="width:${width}px;height:${height}px;overflow:hidden;"></div>`;
   }
   
