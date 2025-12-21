@@ -21,7 +21,7 @@ function removeAllSpineUI() {
 }
 
 // 创建Spine播放器
-function createSpinePlayer(containerId, spineData, width, height) {
+function createSpinePlayer(containerId, spineData) {
   if (!spineData || !spineData.skel || !spineData.atlas) {
     console.warn('Spine数据不完整');
     return false;
@@ -37,8 +37,8 @@ function createSpinePlayer(containerId, spineData, width, height) {
     if (!container) return;
     
     // viewport参数
-    const vpWidth = 400;
-    const vpHeight = 500;
+    const vpWidth = 450;
+    const vpHeight = 550;
     
     try {
       const player = new spine.SpinePlayer(containerId, {
@@ -51,13 +51,12 @@ function createSpinePlayer(containerId, spineData, width, height) {
         showControls: false,
         viewport: {
           x: -vpWidth / 2,
-          y: 0,
+          y: -30,
           width: vpWidth,
           height: vpHeight
         },
         success: function(player) {
           console.log('Spine加载成功:', containerId);
-          // 多次删除确保干净
           removeAllSpineUI();
           setTimeout(removeAllSpineUI, 100);
           setTimeout(removeAllSpineUI, 300);
@@ -88,18 +87,19 @@ function showPlaceholder(containerId) {
   }
 }
 
-// 生成角色媒体元素
-function createCharMedia(charData, charName, className, width, height) {
-  width = width || 120;
-  height = height || 150;
+// 生成Spine角色（队伍槽位和战斗界面用）
+function createSpineMedia(charData, charName, className, width, height) {
+  width = width || 125;
+  height = height || 160;
   
   const containerId = `char-${charName.replace(/\s/g, '_')}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
   
   if (charData && charData.spine && charData.spine.skel && charData.spine.atlas) {
-    createSpinePlayer(containerId, charData.spine, width, height);
+    createSpinePlayer(containerId, charData.spine);
     return `<div id="${containerId}" class="${className} spine-container" style="width:${width}px;height:${height}px;overflow:hidden;"></div>`;
   }
   
+  // 没有spine资源，显示占位符
   return `<div class="img-placeholder ${className}" style="width:${width}px;height:${height}px;display:flex;align-items:center;justify-content:center;">👤</div>`;
 }
 
@@ -126,7 +126,7 @@ function showPage(pageName) {
   }
 }
 
-// 显示抽卡结果
+// 显示抽卡结果（显示干员数据）
 function showGachaResult(results) {
   const container = document.getElementById('gacha-result');
   container.innerHTML = '';
@@ -137,10 +137,13 @@ function showGachaResult(results) {
       const card = document.createElement('div');
       card.className = `card ${r.rarity.toLowerCase()}`;
       
-      const mediaHtml = createCharMedia(data, r.name, 'card-spine', 120, 150);
-      
       card.innerHTML = `
-        ${mediaHtml}
+        <div class="card-stats">
+          <div class="card-hp">HP: ${data.hp}</div>
+          <div class="card-atk">ATK: ${data.atk}</div>
+          <div class="card-def">DEF: ${data.def}</div>
+          <div class="card-spd">SPD: ${data.spd}</div>
+        </div>
         <div class="card-info">
           <div class="card-rarity">${r.rarity}</div>
           <div class="card-name">${r.name}</div>

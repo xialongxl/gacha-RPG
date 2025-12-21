@@ -663,3 +663,85 @@ body {
   width: 120px;
   height: 190px;
 }
+/* ==================== 抽卡结果卡片样式 ==================== */
+.card {
+  width: 120px;
+  min-height: 140px;
+  padding: 10px;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.card-stats {
+  font-size: 11px;
+  line-height: 1.6;
+  color: rgba(255,255,255,0.9);
+}
+
+.card-info {
+  text-align: center;
+  margin-top: 10px;
+}
+
+.card-rarity {
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.card-name {
+  font-size: 14px;
+  font-weight: bold;
+  margin-top: 3px;
+}
+
+/* ==================== 角色列表样式 ==================== */
+.char-item {
+  width: 130px;
+  min-height: 120px;
+  padding: 10px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.char-item:hover {
+  background: rgba(255,255,255,0.2);
+  transform: scale(1.02);
+}
+
+.char-item.ssr { border-left: 4px solid #f5af19; }
+.char-item.sr { border-left: 4px solid #667eea; }
+.char-item.r { border-left: 4px solid #4facfe; }
+.char-item.n { border-left: 4px solid #888; }
+
+.char-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+
+.char-rarity {
+  font-weight: bold;
+}
+
+.char-count {
+  color: #aaa;
+}
+
+.char-name {
+  font-size: 14px;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.char-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  font-size: 11px;
+  color: #ccc;
+}

@@ -6,7 +6,7 @@ function updateTeamUI() {
   renderCharacterList();
 }
 
-// 渲染队伍槽位
+// 渲染队伍槽位（用Spine）
 function renderTeamSlots() {
   const slotsDiv = document.getElementById('team-slots');
   slotsDiv.innerHTML = '';
@@ -17,7 +17,7 @@ function renderTeamSlots() {
     
     if (charName) {
       const data = CHARACTER_DATA[charName];
-      const mediaHtml = createCharMedia(data, charName, 'slot-spine', 120, 150);
+      const mediaHtml = createSpineMedia(data, charName, 'slot-spine', 125, 160);
       
       slot.innerHTML = `
         ${mediaHtml}
@@ -26,7 +26,7 @@ function renderTeamSlots() {
       `;
     } else {
       slot.innerHTML = `
-        <div class="img-placeholder" style="width:120px;height:150px;display:flex;align-items:center;justify-content:center;font-size:32px;">+</div>
+        <div class="img-placeholder" style="width:125px;height:160px;display:flex;align-items:center;justify-content:center;font-size:32px;">+</div>
         <div class="slot-name">空槽位</div>
         <div class="slot-info">点击选择</div>
       `;
@@ -37,7 +37,7 @@ function renderTeamSlots() {
   });
 }
 
-// 渲染角色列表
+// 渲染角色列表（显示干员数据）
 function renderCharacterList() {
   const listDiv = document.getElementById('char-list');
   listDiv.innerHTML = '';
@@ -54,12 +54,18 @@ function renderCharacterList() {
     const item = document.createElement('div');
     item.className = `char-item ${data.rarity.toLowerCase()}`;
     
-    const mediaHtml = createCharMedia(data, name, 'char-spine', 100, 130);
-    
     item.innerHTML = `
-      ${mediaHtml}
+      <div class="char-header">
+        <span class="char-rarity">${data.rarity}</span>
+        <span class="char-count">x${info.count}</span>
+      </div>
       <div class="char-name">${name}</div>
-      <div class="char-stats">${data.rarity} x${info.count}</div>
+      <div class="char-stats-grid">
+        <div>HP:${data.hp}</div>
+        <div>ATK:${data.atk}</div>
+        <div>DEF:${data.def}</div>
+        <div>SPD:${data.spd}</div>
+      </div>
     `;
     item.onclick = () => assignToSlot(name);
     listDiv.appendChild(item);
