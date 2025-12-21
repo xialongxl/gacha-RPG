@@ -19,12 +19,9 @@ function createSpinePlayer(containerId, spineData, width, height) {
     const container = document.getElementById(containerId);
     if (!container) return;
     
-    // 根据容器大小计算viewport
-    const containerWidth = width || container.clientWidth || 120;
-    const containerHeight = height || container.clientHeight || 150;
-    const scale = containerHeight / 200;
-    const vpWidth = 300 * scale;
-    const vpHeight = 350 * scale;
+    // viewport参数
+    const vpWidth = 400;
+    const vpHeight = 500;
     
     try {
       const player = new spine.SpinePlayer(containerId, {
@@ -37,12 +34,22 @@ function createSpinePlayer(containerId, spineData, width, height) {
         showControls: false,
         viewport: {
           x: -vpWidth / 2,
-          y: -vpHeight * 0.15,
+          y: 0,
           width: vpWidth,
           height: vpHeight
         },
         success: function(player) {
           console.log('Spine加载成功:', containerId);
+          // 删除水印和控制栏
+          const cont = document.getElementById(containerId);
+          if (cont) {
+            const logo = cont.querySelector('#spine-player-button-logo');
+            const controls = cont.querySelector('.spine-player-controls');
+            const buttons = cont.querySelector('.spine-player-buttons');
+            if (logo) logo.remove();
+            if (controls) controls.remove();
+            if (buttons) buttons.remove();
+          }
         },
         error: function(player, msg) {
           console.error('Spine加载失败:', msg);

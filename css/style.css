@@ -607,7 +607,7 @@ body {
 
 /* ==================== Spine播放器样式 ==================== */
 
-/* 隐藏Spine播放器的logo和控制栏 */
+/* 隐藏Spine播放器的logo和控制栏 - 完全不占空间 */
 #spine-player-button-logo,
 .spine-player-button-icon-spine-logo,
 .spine-player-logo,
@@ -617,6 +617,10 @@ body {
 .spine-player-popup {
   display: none !important;
   visibility: hidden !important;
+  width: 0 !important;
+  height: 0 !important;
+  position: absolute !important;
+  pointer-events: none !important;
 }
 
 /* Spine播放器透明背景 */
