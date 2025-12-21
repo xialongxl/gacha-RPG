@@ -113,11 +113,13 @@ function renderBattleSide(containerId, units, title, isEnemy) {
     const charData = CHARACTER_DATA[unit.name];
     let avatarHtml;
     
-    if (charData && charData.spine) {
-      avatarHtml = createCharMedia(charData, unit.name, 'unit-spine', 100, 130);
+    if (!isEnemy && charData && charData.spine && charData.spine.skel && charData.spine.atlas) {
+      // 我方角色用Spine
+      avatarHtml = createSpineMedia(charData, unit.name, 'unit-spine', 100, 120);
     } else {
+      // 敌方或没有spine的用占位符
       const emoji = isEnemy ? '👹' : '👤';
-      avatarHtml = `<div class="img-placeholder" style="width:80px;height:100px;display:flex;align-items:center;justify-content:center;font-size:32px;">${emoji}</div>`;
+      avatarHtml = `<div class="img-placeholder" style="width:100px;height:120px;display:flex;align-items:center;justify-content:center;font-size:32px;">${emoji}</div>`;
     }
     
     let infoHtml = `
