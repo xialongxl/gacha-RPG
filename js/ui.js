@@ -3,6 +3,23 @@
 // Spine播放器实例管理
 const spineInstances = new Map();
 
+// 全局删除Spine水印和控制栏
+function removeAllSpineUI() {
+  const selectors = [
+    '.spine-player-controls',
+    '.spine-player-buttons',
+    '.spine-player-timeline',
+    '.spine-player-popup',
+    '#spine-player-button-logo',
+    '.spine-player-button-icon-spine-logo',
+    '[id*="spine-player-button"]'
+  ];
+  
+  selectors.forEach(sel => {
+    document.querySelectorAll(sel).forEach(el => el.remove());
+  });
+}
+
 // 创建Spine播放器
 function createSpinePlayer(containerId, spineData, width, height) {
   if (!spineData || !spineData.skel || !spineData.atlas) {
@@ -40,16 +57,12 @@ function createSpinePlayer(containerId, spineData, width, height) {
         },
         success: function(player) {
           console.log('Spine加载成功:', containerId);
-          // 删除水印和控制栏
-          const cont = document.getElementById(containerId);
-          if (cont) {
-            const logo = cont.querySelector('#spine-player-button-logo');
-            const controls = cont.querySelector('.spine-player-controls');
-            const buttons = cont.querySelector('.spine-player-buttons');
-            if (logo) logo.remove();
-            if (controls) controls.remove();
-            if (buttons) buttons.remove();
-          }
+          // 多次删除确保干净
+          removeAllSpineUI();
+          setTimeout(removeAllSpineUI, 100);
+          setTimeout(removeAllSpineUI, 300);
+          setTimeout(removeAllSpineUI, 500);
+          setTimeout(removeAllSpineUI, 1000);
         },
         error: function(player, msg) {
           console.error('Spine加载失败:', msg);
