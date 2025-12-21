@@ -26,32 +26,188 @@ const CHARACTER_DATA = {
   '12F': { rarity: 'N', hp: 320, atk: 55, def: 22, spd: 62, skills: ['普攻'] }
 };
 
-// 技能效果
+// 技能效果（新增 cost 和 gain）
 const SKILL_EFFECTS = {
-  '普攻': { type: 'damage', multiplier: 1.0, target: 'single', desc: '造成100%攻击力伤害' },
-  '奥义·终结': { type: 'damage', multiplier: 2.5, target: 'single', desc: '造成250%攻击力伤害' },
-  '赤霄·拔刀': { type: 'damage', multiplier: 2.0, target: 'single', desc: '造成200%攻击力伤害' },
-  '真银斩': { type: 'damage', multiplier: 1.5, target: 'all', desc: '对所有敌人造成150%攻击力伤害' },
-  '火山': { type: 'damage', multiplier: 2.2, target: 'all', desc: '对所有敌人造成220%攻击力伤害' },
-  '剑雨': { type: 'damage', multiplier: 1.3, target: 'all', desc: '对所有敌人造成130%攻击力伤害' },
-  '治疗': { type: 'heal', multiplier: 1.5, target: 'ally', desc: '恢复目标150%攻击力的生命' },
-  '群疗': { type: 'heal', multiplier: 0.8, target: 'all_ally', desc: '恢复所有队友80%攻击力的生命' },
-  '毒刺': { type: 'damage', multiplier: 1.8, target: 'single', desc: '造成180%攻击力伤害' },
-  '连射': { type: 'damage', multiplier: 0.6, target: 'random3', desc: '随机攻击3次，每次60%攻击力' },
-  '处决': { type: 'damage', multiplier: 3.0, target: 'single', desc: '造成300%攻击力伤害' },
-  '突刺': { type: 'damage', multiplier: 1.4, target: 'single', desc: '造成140%攻击力伤害' },
-  '连斩': { type: 'damage', multiplier: 0.5, target: 'random2', desc: '随机攻击2次，每次50%攻击力' },
-  '战吼': { type: 'buff', multiplier: 0.3, target: 'all_ally', desc: '提升全体攻击力30%' },
-  '强化': { type: 'buff', multiplier: 0.5, target: 'self', desc: '提升自身攻击力50%' },
-  '灼烧': { type: 'damage', multiplier: 1.2, target: 'all', desc: '对所有敌人造成120%攻击力伤害' },
-  'Mon3tr': { type: 'damage', multiplier: 2.0, target: 'single', desc: '召唤Mon3tr攻击，造成200%伤害' },
-  '眩晕': { type: 'damage', multiplier: 1.0, target: 'single', desc: '造成100%伤害并眩晕' },
-  '钩索': { type: 'damage', multiplier: 1.2, target: 'single', desc: '造成120%攻击力伤害' },
-  '投掷': { type: 'damage', multiplier: 1.5, target: 'single', desc: '造成150%攻击力伤害' },
-  '潜行': { type: 'buff', multiplier: 0.5, target: 'self', desc: '提升自身攻击力50%' }
+  // 普攻：不消耗，获得能量
+  '普攻': { 
+    type: 'damage', 
+    multiplier: 1.0, 
+    target: 'single', 
+    cost: 0, 
+    gain: 30,
+    desc: '造成100%攻击力伤害，获得30能量' 
+  },
+  
+  // 大招：高消耗
+  '奥义·终结': { 
+    type: 'damage', 
+    multiplier: 2.5, 
+    target: 'single', 
+    cost: 100, 
+    gain: 0,
+    desc: '消耗100能量，造成250%攻击力伤害' 
+  },
+  '赤霄·拔刀': { 
+    type: 'damage', 
+    multiplier: 2.0, 
+    target: 'single', 
+    cost: 80, 
+    gain: 0,
+    desc: '消耗80能量，造成200%攻击力伤害' 
+  },
+  '真银斩': { 
+    type: 'damage', 
+    multiplier: 1.5, 
+    target: 'all', 
+    cost: 100, 
+    gain: 0,
+    desc: '消耗100能量，对所有敌人造成150%攻击力伤害' 
+  },
+  '火山': { 
+    type: 'damage', 
+    multiplier: 2.2, 
+    target: 'all', 
+    cost: 100, 
+    gain: 0,
+    desc: '消耗100能量，对所有敌人造成220%攻击力伤害' 
+  },
+  '处决': { 
+    type: 'damage', 
+    multiplier: 3.0, 
+    target: 'single', 
+    cost: 100, 
+    gain: 0,
+    desc: '消耗100能量，造成300%攻击力伤害' 
+  },
+  'Mon3tr': { 
+    type: 'damage', 
+    multiplier: 2.0, 
+    target: 'single', 
+    cost: 80, 
+    gain: 0,
+    desc: '消耗80能量，召唤Mon3tr造成200%伤害' 
+  },
+  
+  // 中等技能：中等消耗
+  '剑雨': { 
+    type: 'damage', 
+    multiplier: 1.3, 
+    target: 'all', 
+    cost: 50, 
+    gain: 0,
+    desc: '消耗50能量，对所有敌人造成130%攻击力伤害' 
+  },
+  '毒刺': { 
+    type: 'damage', 
+    multiplier: 1.8, 
+    target: 'single', 
+    cost: 40, 
+    gain: 0,
+    desc: '消耗40能量，造成180%攻击力伤害' 
+  },
+  '连射': { 
+    type: 'damage', 
+    multiplier: 0.6, 
+    target: 'random3', 
+    cost: 50, 
+    gain: 0,
+    desc: '消耗50能量，随机攻击3次，每次60%攻击力' 
+  },
+  '灼烧': { 
+    type: 'damage', 
+    multiplier: 1.2, 
+    target: 'all', 
+    cost: 40, 
+    gain: 0,
+    desc: '消耗40能量，对所有敌人造成120%攻击力伤害' 
+  },
+  '眩晕': { 
+    type: 'damage', 
+    multiplier: 1.0, 
+    target: 'single', 
+    cost: 50, 
+    gain: 0,
+    desc: '消耗50能量，造成100%伤害并眩晕' 
+  },
+  '突刺': { 
+    type: 'damage', 
+    multiplier: 1.4, 
+    target: 'single', 
+    cost: 30, 
+    gain: 0,
+    desc: '消耗30能量，造成140%攻击力伤害' 
+  },
+  '连斩': { 
+    type: 'damage', 
+    multiplier: 0.5, 
+    target: 'random2', 
+    cost: 30, 
+    gain: 0,
+    desc: '消耗30能量，随机攻击2次，每次50%攻击力' 
+  },
+  '钩索': { 
+    type: 'damage', 
+    multiplier: 1.2, 
+    target: 'single', 
+    cost: 30, 
+    gain: 0,
+    desc: '消耗30能量，造成120%攻击力伤害' 
+  },
+  '投掷': { 
+    type: 'damage', 
+    multiplier: 1.5, 
+    target: 'single', 
+    cost: 40, 
+    gain: 0,
+    desc: '消耗40能量，造成150%攻击力伤害' 
+  },
+  
+  // 治疗技能
+  '治疗': { 
+    type: 'heal', 
+    multiplier: 1.5, 
+    target: 'ally', 
+    cost: 40, 
+    gain: 0,
+    desc: '消耗40能量，恢复目标150%攻击力的生命' 
+  },
+  '群疗': { 
+    type: 'heal', 
+    multiplier: 0.8, 
+    target: 'all_ally', 
+    cost: 80, 
+    gain: 0,
+    desc: '消耗80能量，恢复所有队友80%攻击力的生命' 
+  },
+  
+  // 增益技能
+  '战吼': { 
+    type: 'buff', 
+    multiplier: 0.3, 
+    target: 'all_ally', 
+    cost: 50, 
+    gain: 0,
+    desc: '消耗50能量，提升全体攻击力30%' 
+  },
+  '强化': { 
+    type: 'buff', 
+    multiplier: 0.5, 
+    target: 'self', 
+    cost: 30, 
+    gain: 0,
+    desc: '消耗30能量，提升自身攻击力50%' 
+  },
+  '潜行': { 
+    type: 'buff', 
+    multiplier: 0.5, 
+    target: 'self', 
+    cost: 30, 
+    gain: 0,
+    desc: '消耗30能量，提升自身攻击力50%' 
+  }
 };
 
-// 关卡数据
+// 关卡数据（不变）
 const STAGES = [
   {
     id: 1,
