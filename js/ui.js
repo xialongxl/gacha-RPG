@@ -37,7 +37,7 @@ function createSpinePlayer(containerId, spineData, width, height) {
         showControls: false,
         viewport: {
           x: -vpWidth / 2,
-          y: 0,
+          y: -vpHeight * 0.15,
           width: vpWidth,
           height: vpHeight
         },
