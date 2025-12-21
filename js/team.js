@@ -17,7 +17,7 @@ function renderTeamSlots() {
     
     if (charName) {
       const data = CHARACTER_DATA[charName];
-      const mediaHtml = createCharMedia(data, charName, 'slot-spine', 100, 120);
+      const mediaHtml = createCharMedia(data, charName, 'slot-spine', 120, 150);
       
       slot.innerHTML = `
         ${mediaHtml}
@@ -26,7 +26,7 @@ function renderTeamSlots() {
       `;
     } else {
       slot.innerHTML = `
-        <div class="img-placeholder" style="width:100px;height:120px;display:flex;align-items:center;justify-content:center;font-size:32px;">+</div>
+        <div class="img-placeholder" style="width:120px;height:150px;display:flex;align-items:center;justify-content:center;font-size:32px;">+</div>
         <div class="slot-name">空槽位</div>
         <div class="slot-info">点击选择</div>
       `;
@@ -54,7 +54,7 @@ function renderCharacterList() {
     const item = document.createElement('div');
     item.className = `char-item ${data.rarity.toLowerCase()}`;
     
-    const mediaHtml = createCharMedia(data, name, 'char-spine', 80, 100);
+    const mediaHtml = createCharMedia(data, name, 'char-spine', 100, 130);
     
     item.innerHTML = `
       ${mediaHtml}

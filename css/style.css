@@ -637,3 +637,21 @@ body {
   max-width: 100%;
   max-height: 100%;
 }
+/* 隐藏Spine播放器的logo和控制栏 */
+#spine-player-button-logo,
+.spine-player-button-icon-spine-logo,
+.spine-player-controls,
+.spine-player-buttons,
+.spine-player-timeline {
+  display: none !important;
+}
+
+/* Spine容器样式 */
+.spine-container {
+  overflow: hidden !important;
+}
+
+.spine-container .spine-player {
+  width: 100% !important;
+  height: 100% !important;
+}

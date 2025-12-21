@@ -114,7 +114,7 @@ function renderBattleSide(containerId, units, title, isEnemy) {
     let avatarHtml;
     
     if (charData && charData.spine) {
-      avatarHtml = createCharMedia(charData, unit.name, 'unit-spine', 80, 100);
+      avatarHtml = createCharMedia(charData, unit.name, 'unit-spine', 100, 130);
     } else {
       const emoji = isEnemy ? '👹' : '👤';
       avatarHtml = `<div class="img-placeholder" style="width:80px;height:100px;display:flex;align-items:center;justify-content:center;font-size:32px;">${emoji}</div>`;

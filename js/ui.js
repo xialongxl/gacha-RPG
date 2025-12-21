@@ -3,8 +3,8 @@
 // Spine播放器实例管理
 const spineInstances = new Map();
 
-// 创建Spine播放器（官方3.8版本 - 完整修复版）
-function createSpinePlayer(containerId, spineData) {
+// 创建Spine播放器
+function createSpinePlayer(containerId, spineData, width, height) {
   if (!spineData || !spineData.skel || !spineData.atlas) {
     console.warn('Spine数据不完整');
     return false;
@@ -19,6 +19,13 @@ function createSpinePlayer(containerId, spineData) {
     const container = document.getElementById(containerId);
     if (!container) return;
     
+    // 根据容器大小计算viewport
+    const containerWidth = width || container.clientWidth || 120;
+    const containerHeight = height || container.clientHeight || 150;
+    const scale = containerHeight / 200;
+    const vpWidth = 300 * scale;
+    const vpHeight = 350 * scale;
+    
     try {
       const player = new spine.SpinePlayer(containerId, {
         skelUrl: spineData.skel,
@@ -28,24 +35,14 @@ function createSpinePlayer(containerId, spineData) {
         backgroundColor: '#00000000',
         alpha: true,
         showControls: false,
-        showLoading: false,
-        preserveDrawingBuffer: true,
         viewport: {
-          debugRender: false,
-          x: -200,
-          y: -50,
-          width: 400,
-          height: 400,
-          padLeft: 0,
-          padRight: 0,
-          padTop: 0,
-          padBottom: 0
+          x: -vpWidth / 2,
+          y: 0,
+          width: vpWidth,
+          height: vpHeight
         },
         success: function(player) {
           console.log('Spine加载成功:', containerId);
-          // 隐藏logo
-          const logo = container.querySelector('.spine-player-logo');
-          if (logo) logo.style.display = 'none';
         },
         error: function(player, msg) {
           console.error('Spine加载失败:', msg);
@@ -79,7 +76,7 @@ function createCharMedia(charData, charName, className, width, height) {
   const containerId = `char-${charName.replace(/\s/g, '_')}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
   
   if (charData && charData.spine && charData.spine.skel && charData.spine.atlas) {
-    createSpinePlayer(containerId, charData.spine);
+    createSpinePlayer(containerId, charData.spine, width, height);
     return `<div id="${containerId}" class="${className} spine-container" style="width:${width}px;height:${height}px;overflow:hidden;"></div>`;
   }
   
@@ -120,7 +117,7 @@ function showGachaResult(results) {
       const card = document.createElement('div');
       card.className = `card ${r.rarity.toLowerCase()}`;
       
-      const mediaHtml = createCharMedia(data, r.name, 'card-spine', 100, 130);
+      const mediaHtml = createCharMedia(data, r.name, 'card-spine', 120, 150);
       
       card.innerHTML = `
         ${mediaHtml}
