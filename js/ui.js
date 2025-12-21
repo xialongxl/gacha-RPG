@@ -16,15 +16,14 @@ function createSpinePlayer(containerId, spineData, width, height) {
     
     try {
       const player = new spine.SpinePlayer(containerId, {
-        skeleton: spineData.skel,
-        atlas: spineData.atlas,
+        binaryUrl: spineData.skel,
+        atlasUrl: spineData.atlas,
         animation: spineData.animation || 'Idle',
         backgroundColor: '#00000000',
         alpha: true,
         premultipliedAlpha: false,
         showControls: false,
         showLoading: false,
-        preserveDrawingBuffer: true,
         success: function(player) {
           console.log('Spine加载成功:', containerId);
         },
