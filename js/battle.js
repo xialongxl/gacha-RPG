@@ -1,5 +1,8 @@
 // ==================== 战斗系统 ====================
 
+// 已渲染的Spine容器ID记录
+const renderedSpineUnits = new Set();
+
 // 更新关卡UI
 function updateStageUI() {
   const list = document.getElementById('stage-list');
@@ -35,6 +38,7 @@ function startBattle(stage) {
   saveState();
   
   resetBattle();
+  renderedSpineUnits.clear(); // 清空已渲染记录
   battle.active = true;
   battle.stage = stage;
   
@@ -53,11 +57,12 @@ function startBattle(stage) {
       energy: 0,
       maxEnergy: 100,
       buffAtk: 0,
-      isEnemy: false
+      isEnemy: false,
+      unitId: `ally-${name}-${Date.now()}`
     };
   });
   
-  battle.enemies = stage.enemies.map(e => ({
+  battle.enemies = stage.enemies.map((e, idx) => ({
     name: e.name,
     hp: e.hp,
     atk: e.atk,
@@ -69,7 +74,8 @@ function startBattle(stage) {
     energy: 0,
     maxEnergy: 100,
     buffAtk: 0,
-    isEnemy: true
+    isEnemy: true,
+    unitId: `enemy-${e.name}-${idx}-${Date.now()}`
   }));
   
   document.getElementById('stage-panel').style.display = 'none';
@@ -78,7 +84,9 @@ function startBattle(stage) {
   addBattleLog('⚔️ 战斗开始！', 'system');
   calculateTurnOrder();
   battle.currentTurn = 0;
-  renderBattle();
+  
+  // 首次渲染（完整渲染）
+  renderBattleInitial();
   setTimeout(() => nextTurn(), 500);
 }
 
@@ -88,15 +96,22 @@ function calculateTurnOrder() {
   battle.turnOrder = allUnits.sort((a, b) => b.spd - a.spd);
 }
 
-// 渲染战斗界面
-function renderBattle() {
-  renderBattleSide('ally-side', battle.allies, '我方', false);
-  renderBattleSide('enemy-side', battle.enemies, '敌方', true);
+// 首次渲染战斗界面（完整渲染，包含Spine）
+function renderBattleInitial() {
+  renderBattleSideInitial('ally-side', battle.allies, '我方', false);
+  renderBattleSideInitial('enemy-side', battle.enemies, '敌方', true);
   renderBattleLog();
 }
 
-// 渲染一侧单位
-function renderBattleSide(containerId, units, title, isEnemy) {
+// 更新战斗界面（只更新数值，不重新渲染Spine）
+function renderBattle() {
+  updateBattleSide(battle.allies, false);
+  updateBattleSide(battle.enemies, true);
+  renderBattleLog();
+}
+
+// 首次渲染一侧单位（包含Spine）
+function renderBattleSideInitial(containerId, units, title, isEnemy) {
   const container = document.getElementById(containerId);
   container.innerHTML = `<h3>${title}</h3>`;
   
@@ -109,15 +124,15 @@ function renderBattleSide(containerId, units, title, isEnemy) {
     
     const div = document.createElement('div');
     div.className = `battle-unit ${isEnemy ? 'enemy' : ''} ${isDead ? 'dead' : ''} ${isActing ? 'acting' : ''}`;
+    div.id = `unit-${unit.unitId}`;
     
     const charData = CHARACTER_DATA[unit.name];
     let avatarHtml;
     
     if (!isEnemy && charData && charData.spine && charData.spine.skel && charData.spine.atlas) {
-      // 我方角色用Spine
       avatarHtml = createSpineMedia(charData, unit.name, 'unit-spine', 100, 120);
+      renderedSpineUnits.add(unit.unitId);
     } else {
-      // 敌方或没有spine的用占位符
       const emoji = isEnemy ? '👹' : '👤';
       avatarHtml = `<div class="img-placeholder" style="width:100px;height:120px;display:flex;align-items:center;justify-content:center;font-size:32px;">${emoji}</div>`;
     }
@@ -148,6 +163,44 @@ function renderBattleSide(containerId, units, title, isEnemy) {
     
     div.innerHTML = avatarHtml + infoHtml;
     container.appendChild(div);
+  });
+}
+
+// 更新一侧单位（只更新数值）
+function updateBattleSide(units, isEnemy) {
+  units.forEach(unit => {
+    const div = document.getElementById(`unit-${unit.unitId}`);
+    if (!div) return;
+    
+    const hpPercent = Math.max(0, (unit.currentHp / unit.maxHp) * 100);
+    const energyPercent = Math.max(0, (unit.energy / unit.maxEnergy) * 100);
+    const isLow = hpPercent < 30;
+    const isDead = unit.currentHp <= 0;
+    const isActing = battle.turnOrder[battle.currentTurn] === unit;
+    
+    // 更新class
+    div.className = `battle-unit ${isEnemy ? 'enemy' : ''} ${isDead ? 'dead' : ''} ${isActing ? 'acting' : ''}`;
+    
+    // 更新HP条
+    const hpFill = div.querySelector('.hp-bar-fill');
+    if (hpFill) {
+      hpFill.style.width = `${hpPercent}%`;
+      hpFill.className = `hp-bar-fill ${isLow ? 'low' : ''}`;
+    }
+    
+    // 更新能量条
+    if (!isEnemy) {
+      const energyFill = div.querySelector('.energy-bar-fill');
+      if (energyFill) {
+        energyFill.style.width = `${energyPercent}%`;
+      }
+    }
+    
+    // 更新数值
+    const stats = div.querySelector('.unit-stats');
+    if (stats) {
+      stats.innerHTML = `HP:${Math.max(0, unit.currentHp)}/${unit.maxHp}${!isEnemy ? ` | ⚡${unit.energy}` : ''}`;
+    }
   });
 }
 
@@ -311,15 +364,11 @@ function executeSkill(skill, target) {
 function executePlayerDamage(skill, user, atk, target) {
   const calcDamage = (t) => Math.max(1, Math.floor(atk * skill.multiplier - t.def * 0.5));
   
-  const applyDamage = (t, dmg) => {
-    t.currentHp -= dmg;
-  };
-  
   switch (skill.target) {
     case 'single':
       if (target) {
         const dmg = calcDamage(target);
-        applyDamage(target, dmg);
+        target.currentHp -= dmg;
         addBattleLog(`${user.name}【${skill.name}】→ ${target.name}，${dmg} 伤害！`, 'damage');
         if (target.currentHp <= 0) {
           addBattleLog(`💀 ${target.name} 被击败！`, 'system');
@@ -331,7 +380,7 @@ function executePlayerDamage(skill, user, atk, target) {
       addBattleLog(`${user.name}【${skill.name}】！`, 'damage');
       battle.enemies.filter(e => e.currentHp > 0).forEach(enemy => {
         const dmg = calcDamage(enemy);
-        applyDamage(enemy, dmg);
+        enemy.currentHp -= dmg;
         addBattleLog(`  → ${enemy.name} 受到 ${dmg} 伤害！`, 'damage');
         if (enemy.currentHp <= 0) {
           addBattleLog(`💀 ${enemy.name} 被击败！`, 'system');
@@ -348,7 +397,7 @@ function executePlayerDamage(skill, user, atk, target) {
         if (alive.length === 0) break;
         const t = alive[Math.floor(Math.random() * alive.length)];
         const dmg = calcDamage(t);
-        applyDamage(t, dmg);
+        t.currentHp -= dmg;
         addBattleLog(`  → ${t.name} 受到 ${dmg} 伤害！`, 'damage');
         if (t.currentHp <= 0) {
           addBattleLog(`💀 ${t.name} 被击败！`, 'system');
@@ -461,10 +510,6 @@ function chooseEnemySkill(enemy, aliveAllies, aliveEnemies) {
     return { ...SKILL_EFFECTS['狂暴'], name: '狂暴' };
   }
   
-  if (hpPercent < 0.5 && skills.includes('鼓舞') && SKILL_EFFECTS['鼓舞']) {
-    return { ...SKILL_EFFECTS['鼓舞'], name: '鼓舞' };
-  }
-  
   if (aliveAllies.length >= 3) {
     if (skills.includes('烈焰风暴') && SKILL_EFFECTS['烈焰风暴']) {
       return { ...SKILL_EFFECTS['烈焰风暴'], name: '烈焰风暴' };
@@ -541,9 +586,6 @@ function getStrategy(enemy, target, aliveAllies) {
   if (target.skills && target.skills.some(s => s.includes('治疗') || s.includes('群疗'))) return '针对治疗';
   if (target.energy >= 70) return '阻断大招';
   
-  const maxAtk = Math.max(...aliveAllies.map(a => a.atk));
-  if (target.atk >= maxAtk * 0.9) return '压制输出';
-  
   return '择优攻击';
 }
 
@@ -580,24 +622,11 @@ function executeEnemyDamage(enemy, skill, atk, aliveAllies) {
       });
       break;
     }
-    case 'random2': {
-      addBattleLog(`${enemy.name}【连击·${skill.name}】！`, 'damage');
-      for (let i = 0; i < 2; i++) {
-        const alive = aliveAllies.filter(a => a.currentHp > 0);
-        if (alive.length === 0) break;
-        const target = alive[Math.floor(Math.random() * alive.length)];
-        const dmg = calcDamage(target);
-        applyDamage(target, dmg);
-        addBattleLog(`  → ${target.name} 受到 ${dmg} 伤害！`, 'damage');
-        if (target.currentHp <= 0) {
-          addBattleLog(`💀 ${target.name} 被击败！`, 'system');
-        }
-      }
-      break;
-    }
+    case 'random2':
     case 'random3': {
+      const times = skill.target === 'random3' ? 3 : 2;
       addBattleLog(`${enemy.name}【连击·${skill.name}】！`, 'damage');
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < times; i++) {
         const alive = aliveAllies.filter(a => a.currentHp > 0);
         if (alive.length === 0) break;
         const target = alive[Math.floor(Math.random() * alive.length)];
@@ -656,6 +685,7 @@ function executeEnemyDebuff(enemy, skill, atk, aliveAllies) {
 // 结束战斗
 function endBattle(victory) {
   battle.active = false;
+  renderedSpineUnits.clear();
   
   if (victory) {
     const rewards = battle.stage.rewards;
@@ -681,6 +711,7 @@ function endBattle(victory) {
 // 撤退
 function fleeBattle() {
   battle.active = false;
+  renderedSpineUnits.clear();
   addBattleLog('撤退了...', 'system');
   closeBattleField();
 }
