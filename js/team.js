@@ -17,7 +17,7 @@ function renderTeamSlots() {
     
     if (charName) {
       const data = CHARACTER_DATA[charName];
-      const mediaHtml = createSpineMedia(data, charName, 'slot-spine', 225, 260);
+      const mediaHtml = createSpineMedia(data, charName, 'slot-spine', 125, 160);
       
       slot.innerHTML = `
         ${mediaHtml}
