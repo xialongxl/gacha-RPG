@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="css/style.css">
   <script src="lib/spine-webgl.js"></script>
   <script src="lib/spine-player.js"></script>
+  <link rel="icon" href="assets/img/ak.png" type="image/png">
 
 </head>
 <body>
@@ -15,7 +16,6 @@
     <div class="resources">
       <span>💎 抽卡券: <b id="tickets">50</b></span>
       <span>🪙 金币: <b id="gold">1000</b></span>
-      <span>⚡ 体力: <b id="stamina">100</b>/100</span>
       <span>🎫 保底: <b id="pity">0</b>/20</span>
     </div>
 
@@ -45,6 +45,110 @@
       </div>
     </div>
 
+    <!-- 6星演出模态框 -->
+    <div id="ssr-cutscene" class="cutscene-modal">
+      <div class="cutscene-container">
+        <!-- 背景 -->
+        <div class="cutscene-bg">
+          <img id="cutscene-bg-img" class="cutscene-bg-img" src="" alt="">
+        </div>
+        <!-- 立绘 -->
+        <img id="cutscene-art" class="cutscene-art" src="" alt="">
+        <!-- 星星和名字 -->
+        <div class="cutscene-info">
+          <div class="cutscene-stars">★ ★ ★ ★ ★ ★</div>
+          <div id="cutscene-name" class="cutscene-name"></div>
+        </div>
+        <!-- 字幕 -->
+        <div class="charvoice-wrapper" id="charvoice-wrapper">
+          <div class="charvoice-title">VOICE</div>
+          <div class="charvoice-content" id="cutscene-text"></div>
+        </div>
+      </div>
+      <audio id="cutscene-voice"></audio>
+    </div>
+
+    <!-- 干员详情弹窗 -->
+    <div id="char-detail-modal" class="char-detail-modal">
+      <div class="char-detail-container">
+        <div class="char-detail-bg">
+          <img id="char-detail-bg-img" class="char-detail-bg-img" src="" alt="">
+        </div>
+        <img id="char-detail-art" class="char-detail-art" src="" alt="">
+        
+        <!-- 左侧展开面板 -->
+        <div class="char-detail-panel">
+          <!-- 属性面板 -->
+          <div class="char-detail-section">
+            <div class="char-detail-section-bar" onclick="toggleDetailSection(this)">
+              <span class="section-icon">📊</span>
+              <span class="section-title">属性</span>
+              <span class="section-toggle"></span>
+            </div>
+            
+            <div class="char-detail-section-body">
+              <div class="char-detail-label">基础属性</div>
+              <div class="char-detail-section-content">
+                <div id="char-detail-stats" class="char-detail-stats"></div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 技能面板 -->
+          <div class="char-detail-section">
+            <div class="char-detail-section-bar" onclick="toggleDetailSection(this)">
+              <span class="section-icon">⚔️</span>
+              <span class="section-title">技能</span>
+              <span class="section-toggle"></span>
+            </div>
+            <div class="char-detail-section-body">
+              <div class="char-detail-label">技能列表</div>
+              <div class="char-detail-section-content">
+                <div id="char-detail-skills" class="char-detail-skills"></div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 队长技能面板 -->
+          <div id="char-detail-leader" class="char-detail-section" style="display:none;">
+            <div class="char-detail-section-bar" onclick="toggleDetailSection(this)">
+              <span class="section-icon">👑</span>
+              <span class="section-title">队长技能</span>
+              <span class="section-toggle"></span>
+            </div>
+            <div class="char-detail-section-body">
+              <div class="char-detail-label">队长加成</div>
+              <div class="char-detail-section-content">
+                <div id="char-detail-leader-info" class="char-detail-leader-info"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 左下角信息 -->
+        <div class="char-detail-info">
+          <div id="char-detail-stars" class="char-detail-stars"></div>
+          <div id="char-detail-name" class="char-detail-name"></div>
+          <div id="char-detail-potential" class="char-detail-potential"></div>
+        </div>
+        
+        <!-- 右侧按钮栏 -->
+        <div class="char-detail-buttons">
+          <div class="char-detail-btn" onclick="closeCharDetail(); event.stopPropagation();">
+            <div class="control-btn-flex"><img src="assets/img/back.png" width="30px"></div>
+            <span class="btn-text">关闭</span>
+          </div>
+        </div>
+
+
+
+
+      </div>
+    </div>
+
+
+
+
     <!-- 队伍页 -->
     <div id="page-team" class="page">
       <div class="panel">
@@ -52,9 +156,24 @@
         <div class="team-slots" id="team-slots"></div>
       </div>
 
+      <div class="gacha-buttons">
+        <button class="btn-exchange" onclick="openExchange()">🔄 角色兑换</button>
+      </div>
+
       <div class="panel">
         <h2>角色仓库</h2>
         <div class="character-list" id="char-list"></div>
+      </div>
+    </div>
+
+    <!-- 兑换模态框 -->
+    <div id="exchange-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>角色兑换</h2>
+          <button class="modal-close" onclick="closeExchange()">✕</button>
+        </div>
+        <div id="exchange-panel"></div>
       </div>
     </div>
 
@@ -66,6 +185,13 @@
       </div>
 
       <div class="battle-field" id="battle-field">
+
+        <!-- AT条 -->
+        <div id="at-bar" class="at-bar">
+          <div class="at-bar-label">行动顺序</div>
+          <div id="at-bar-units" class="at-bar-units"></div>
+        </div>
+
         <div class="battle-area">
           <div class="battle-side" id="ally-side"></div>
           <div class="battle-vs">⚔️</div>
@@ -97,10 +223,15 @@
   <script src="js/config.js"></script>
   <script src="js/data.js"></script>
   <script src="js/state.js"></script>
+  <script src="js/cutscene.js"></script>
   <script src="js/ui.js"></script>
+  <script src="js/charDetail.js"></script>
   <script src="js/gacha.js"></script>
   <script src="js/team.js"></script>
   <script src="js/battle.js"></script>
+  <script src="js/skills.js"></script>
+  <script src="js/enemyAI.js"></script>
+  <script src="js/exchange.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>

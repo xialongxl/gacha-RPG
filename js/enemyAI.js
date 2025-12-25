@@ -1,0 +1,143 @@
+// ==================== 敌人AI系统 ====================
+
+/**
+ * 获取敌人决策
+ * @param {Object} enemy - 敌人单位
+ * @param {Array} aliveAllies - 存活的玩家单位
+ * @param {Array} aliveEnemies - 存活的敌人单位
+ * @returns {Object} { skill, target, strategy }
+ */
+function getEnemyDecision(enemy, aliveAllies, aliveEnemies) {
+  const skill = chooseEnemySkill(enemy, aliveAllies, aliveEnemies);
+  
+  let target = null;
+  let strategy = '攻击';
+  
+  // 根据技能目标类型选择目标
+  switch (skill.target) {
+    case 'single':
+      target = chooseTarget(enemy, aliveAllies);
+      strategy = getStrategy(enemy, target, aliveAllies);
+      break;
+    case 'ally_lowest':
+      target = aliveEnemies.reduce((a, b) => 
+        (a.currentHp / a.maxHp) < (b.currentHp / b.maxHp) ? a : b
+      );
+      strategy = '治疗';
+      break;
+    case 'all_enemy':
+    case 'all':
+      strategy = '群攻';
+      break;
+    case 'all_ally_enemy':
+      strategy = '群疗';
+      break;
+    case 'self':
+      strategy = '强化';
+      break;
+    case 'random2':
+    case 'random3':
+      strategy = '连击';
+      break;
+  }
+  
+  return { skill, target, strategy };
+}
+
+// 敌人选择技能
+function chooseEnemySkill(enemy, aliveAllies, aliveEnemies) {
+  const skills = enemy.skills || ['普攻'];
+  
+  if (skills.length === 1) {
+    return { name: '普攻', ...SKILL_EFFECTS['普攻'] };
+  }
+  
+  const hpPercent = enemy.currentHp / enemy.maxHp;
+  const injuredAllies = aliveEnemies.filter(e => e.currentHp / e.maxHp < 0.5);
+  
+  // 优先治疗
+  if (injuredAllies.length > 0) {
+    if (skills.includes('群体治疗') && injuredAllies.length >= 2 && SKILL_EFFECTS['群体治疗']) {
+      return { name: '群体治疗', ...SKILL_EFFECTS['群体治疗'] };
+    }
+    if (skills.includes('战地治疗') && SKILL_EFFECTS['战地治疗']) {
+      return { name: '战地治疗', ...SKILL_EFFECTS['战地治疗'] };
+    }
+  }
+  
+  // 低血量时狂暴
+  if (hpPercent < 0.3 && skills.includes('狂暴') && SKILL_EFFECTS['狂暴']) {
+    return { name: '狂暴', ...SKILL_EFFECTS['狂暴'] };
+  }
+  
+  // 中等血量鼓舞
+  if (hpPercent < 0.5 && skills.includes('鼓舞') && SKILL_EFFECTS['鼓舞']) {
+    return { name: '鼓舞', ...SKILL_EFFECTS['鼓舞'] };
+  }
+  
+  // 多目标时群攻
+  if (aliveAllies.length >= 3) {
+    if (skills.includes('烈焰风暴') && SKILL_EFFECTS['烈焰风暴']) {
+      return { name: '烈焰风暴', ...SKILL_EFFECTS['烈焰风暴'] };
+    }
+    if (skills.includes('横扫') && SKILL_EFFECTS['横扫']) {
+      return { name: '横扫', ...SKILL_EFFECTS['横扫'] };
+    }
+  }
+  
+  // 随机使用特殊技能
+  if (Math.random() < 0.6) {
+    const specialSkills = skills.filter(s => s !== '普攻' && SKILL_EFFECTS[s]);
+    if (specialSkills.length > 0) {
+      const chosen = specialSkills[Math.floor(Math.random() * specialSkills.length)];
+      return { name: chosen, ...SKILL_EFFECTS[chosen] };
+    }
+  }
+  
+  return { name: '普攻', ...SKILL_EFFECTS['普攻'] };
+}
+
+// 智能选择目标
+function chooseTarget(enemy, aliveAllies) {
+  const calcExpectedDmg = (t) => Math.max(1, Math.floor(enemy.atk - t.def * 0.5));
+  
+  const scores = aliveAllies.map(target => {
+    let score = 0;
+    const expectedDmg = calcExpectedDmg(target);
+    
+    // 能击杀优先
+    if (target.currentHp <= expectedDmg) score += 1000;
+    // 残血优先
+    if (target.currentHp / target.maxHp < 0.3) score += 200;
+    // 治疗职业优先
+    if (target.skills && target.skills.some(s => s.includes('治疗') || s.includes('群疗'))) score += 150;
+    // 高能量优先
+    if (target.energy >= 70) score += 100;
+    // 高攻击优先
+    const maxAtk = Math.max(...aliveAllies.map(a => a.atk));
+    score += (target.atk / maxAtk) * 80;
+    // 随机因子
+    score += Math.random() * 30;
+    
+    return { target, score };
+  });
+  
+  scores.sort((a, b) => b.score - a.score);
+  return scores[0].target;
+}
+
+// 获取AI策略描述
+function getStrategy(enemy, target, aliveAllies) {
+  const calcExpectedDmg = (t) => Math.max(1, Math.floor(enemy.atk - t.def * 0.5));
+  const expectedDmg = calcExpectedDmg(target);
+  
+  if (target.currentHp <= expectedDmg) return '补刀';
+  if (target.currentHp / target.maxHp < 0.3) return '集火残血';
+  if (target.skills && target.skills.some(s => s.includes('治疗') || s.includes('群疗'))) return '针对治疗';
+  if (target.energy >= 70) return '阻断大招';
+  
+  const maxAtk = Math.max(...aliveAllies.map(a => a.atk));
+  if (target.atk >= maxAtk * 0.9) return '压制输出';
+  
+  return '择优攻击';
+}

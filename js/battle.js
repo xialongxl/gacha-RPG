@@ -13,7 +13,7 @@ function updateStageUI() {
     btn.className = 'stage-btn';
     btn.innerHTML = `
       <div><b>${stage.name}</b></div>
-      <small>体力: ${stage.stamina} | 金币: ${stage.rewards.gold}</small>
+      <small>金币: ${stage.rewards.gold} | 抽卡券：${stage.rewards.tickets}</small>
     `;
     btn.onclick = () => startBattle(stage);
     list.appendChild(btn);
@@ -27,38 +27,34 @@ function startBattle(stage) {
     alert('请先编队！');
     return;
   }
-  
-  if (state.stamina < stage.stamina) {
-    alert('体力不足！');
-    return;
-  }
-  
-  state.stamina -= stage.stamina;
-  updateResourceUI();
+
   saveState();
   
   resetBattle();
-  renderedSpineUnits.clear(); // 清空已渲染记录
+  renderedSpineUnits.clear();
   battle.active = true;
   battle.stage = stage;
   
-  battle.allies = team.map(name => {
+  battle.allies = team.map((name, index) => {
     const data = CHARACTER_DATA[name];
+    const potential = state.inventory[name]?.potential || 1;
     return {
       name,
       rarity: data.rarity,
-      hp: data.hp,
-      atk: data.atk,
-      def: data.def,
+      hp: applyPotentialBonus(data.hp, potential),
+      atk: applyPotentialBonus(data.atk, potential),
+      def: applyPotentialBonus(data.def, potential),
       spd: data.spd,
       skills: [...data.skills],
-      currentHp: data.hp,
-      maxHp: data.hp,
+      currentHp: applyPotentialBonus(data.hp, potential),
+      maxHp: applyPotentialBonus(data.hp, potential),
       energy: 0,
       maxEnergy: 100,
       buffAtk: 0,
+      stunDuration: 0,
       isEnemy: false,
-      unitId: `ally-${name}-${Date.now()}`
+      isLeader: index === 0,
+      unitId: `ally-${name}-${Date.now()}-${index}`
     };
   });
   
@@ -74,6 +70,11 @@ function startBattle(stage) {
     energy: 0,
     maxEnergy: 100,
     buffAtk: 0,
+    stunDuration: 0,
+    shield: e.shield || 0,
+    currentShield: e.shield || 0,
+    shieldBroken: false,
+    originalDef: e.def,
     isEnemy: true,
     unitId: `enemy-${e.name}-${idx}-${Date.now()}`
   }));
@@ -85,7 +86,6 @@ function startBattle(stage) {
   calculateTurnOrder();
   battle.currentTurn = 0;
   
-  // 首次渲染（完整渲染）
   renderBattleInitial();
   setTimeout(() => nextTurn(), 500);
 }
@@ -96,21 +96,60 @@ function calculateTurnOrder() {
   battle.turnOrder = allUnits.sort((a, b) => b.spd - a.spd);
 }
 
-// 首次渲染战斗界面（完整渲染，包含Spine）
+// ==================== AT条系统 ====================
+
+// 渲染AT条
+function renderATBar() {
+  const container = document.getElementById('at-bar-units');
+  if (!container) return;
+  
+  container.innerHTML = '';
+  
+  const allUnits = [...battle.allies, ...battle.enemies].filter(u => u.currentHp > 0);
+  const sorted = allUnits.sort((a, b) => b.spd - a.spd);
+  
+  const displayCount = Math.min(8, sorted.length);
+  
+  for (let i = 0; i < displayCount; i++) {
+    const unit = sorted[i];
+    const isCurrent = (battle.turnOrder[battle.currentTurn] === unit);
+    
+    const div = document.createElement('div');
+    div.className = `at-unit ${unit.isEnemy ? 'enemy' : 'ally'} ${isCurrent ? 'current' : ''}`;
+    
+    const icon = unit.isEnemy ? '👹' : (unit.isLeader ? '👑' : '👤');
+    const stunIcon = unit.stunDuration > 0 ? '💫' : '';
+    const shieldIcon = (unit.isEnemy && unit.shieldBroken) ? '💥' : '';
+    
+    div.innerHTML = `
+      <div class="at-unit-icon">${icon}${stunIcon}${shieldIcon}</div>
+      <div class="at-unit-name">${unit.name}</div>
+      <div class="at-unit-spd">SPD ${unit.spd}</div>
+    `;
+    
+    container.appendChild(div);
+  }
+}
+
+// ==================== 战斗渲染 ====================
+
+// 首次渲染战斗界面
 function renderBattleInitial() {
   renderBattleSideInitial('ally-side', battle.allies, '我方', false);
   renderBattleSideInitial('enemy-side', battle.enemies, '敌方', true);
   renderBattleLog();
+  renderATBar();
 }
 
-// 更新战斗界面（只更新数值，不重新渲染Spine）
+// 更新战斗界面
 function renderBattle() {
   updateBattleSide(battle.allies, false);
   updateBattleSide(battle.enemies, true);
   renderBattleLog();
+  renderATBar();
 }
 
-// 首次渲染一侧单位（包含Spine）
+// 首次渲染一侧单位
 function renderBattleSideInitial(containerId, units, title, isEnemy) {
   const container = document.getElementById(containerId);
   container.innerHTML = `<h3>${title}</h3>`;
@@ -137,6 +176,9 @@ function renderBattleSideInitial(containerId, units, title, isEnemy) {
       avatarHtml = `<div class="img-placeholder" style="width:100px;height:120px;display:flex;align-items:center;justify-content:center;font-size:32px;">${emoji}</div>`;
     }
     
+    // 队长标识
+    const leaderBadge = unit.isLeader ? '<div class="battle-leader-badge">👑队长</div>' : '';
+    
     let infoHtml = `
       <div class="unit-info">
         <div class="unit-name">${unit.name}</div>
@@ -145,6 +187,7 @@ function renderBattleSideInitial(containerId, units, title, isEnemy) {
         </div>
     `;
     
+    // 我方显示能量条
     if (!isEnemy) {
       infoHtml += `
         <div class="energy-bar">
@@ -153,20 +196,31 @@ function renderBattleSideInitial(containerId, units, title, isEnemy) {
       `;
     }
     
+    // 敌方显示护盾
+    let shieldText = '';
+    if (isEnemy && unit.shield > 0) {
+      if (unit.shieldBroken) {
+        shieldText = ' | 🛡️<span class="shield-broken">已破</span>';
+      } else {
+        shieldText = ` | 🛡️${unit.currentShield}/${unit.shield}`;
+      }
+    }
+    
     infoHtml += `
         <div class="unit-stats">
           HP:${Math.max(0, unit.currentHp)}/${unit.maxHp}
           ${!isEnemy ? ` | ⚡${unit.energy}` : ''}
+          ${shieldText}
         </div>
       </div>
     `;
     
-    div.innerHTML = avatarHtml + infoHtml;
+    div.innerHTML = leaderBadge + avatarHtml + infoHtml;
     container.appendChild(div);
   });
 }
 
-// 更新一侧单位（只更新数值）
+// 更新一侧单位
 function updateBattleSide(units, isEnemy) {
   units.forEach(unit => {
     const div = document.getElementById(`unit-${unit.unitId}`);
@@ -178,17 +232,14 @@ function updateBattleSide(units, isEnemy) {
     const isDead = unit.currentHp <= 0;
     const isActing = battle.turnOrder[battle.currentTurn] === unit;
     
-    // 更新class
     div.className = `battle-unit ${isEnemy ? 'enemy' : ''} ${isDead ? 'dead' : ''} ${isActing ? 'acting' : ''}`;
     
-    // 更新HP条
     const hpFill = div.querySelector('.hp-bar-fill');
     if (hpFill) {
       hpFill.style.width = `${hpPercent}%`;
       hpFill.className = `hp-bar-fill ${isLow ? 'low' : ''}`;
     }
     
-    // 更新能量条
     if (!isEnemy) {
       const energyFill = div.querySelector('.energy-bar-fill');
       if (energyFill) {
@@ -196,62 +247,24 @@ function updateBattleSide(units, isEnemy) {
       }
     }
     
-    // 更新数值
+    // 更新护盾显示
+    let shieldText = '';
+    if (isEnemy && unit.shield > 0) {
+      if (unit.shieldBroken) {
+        shieldText = ' | 🛡️<span class="shield-broken">已破</span>';
+      } else {
+        shieldText = ` | 🛡️${unit.currentShield}/${unit.shield}`;
+      }
+    }
+    
     const stats = div.querySelector('.unit-stats');
     if (stats) {
-      stats.innerHTML = `HP:${Math.max(0, unit.currentHp)}/${unit.maxHp}${!isEnemy ? ` | ⚡${unit.energy}` : ''}`;
+      stats.innerHTML = `HP:${Math.max(0, unit.currentHp)}/${unit.maxHp}${!isEnemy ? ` | ⚡${unit.energy}` : ''}${shieldText}`;
     }
   });
 }
 
-// 下一回合
-function nextTurn() {
-  if (!battle.active) return;
-  
-  const aliveAllies = battle.allies.filter(u => u.currentHp > 0);
-  const aliveEnemies = battle.enemies.filter(u => u.currentHp > 0);
-  
-  if (aliveEnemies.length === 0) {
-    endBattle(true);
-    return;
-  }
-  if (aliveAllies.length === 0) {
-    endBattle(false);
-    return;
-  }
-  
-  if (battle.currentTurn >= battle.turnOrder.length) {
-    calculateTurnOrder();
-    battle.currentTurn = 0;
-    addBattleLog('--- 新回合 ---', 'system');
-  }
-  
-  let current = battle.turnOrder[battle.currentTurn];
-  
-  while (current && current.currentHp <= 0) {
-    battle.currentTurn++;
-    if (battle.currentTurn >= battle.turnOrder.length) {
-      setTimeout(() => nextTurn(), 500);
-      return;
-    }
-    current = battle.turnOrder[battle.currentTurn];
-  }
-  
-  if (!current) {
-    setTimeout(() => nextTurn(), 500);
-    return;
-  }
-  
-  renderBattle();
-  
-  if (current.isEnemy) {
-    setTimeout(() => enemyAI(current), 800);
-  } else {
-    showSkillButtons(current);
-  }
-}
-
-// ==================== 玩家操作 ====================
+// ==================== 技能UI ====================
 
 // 显示技能按钮
 function showSkillButtons(unit) {
@@ -262,13 +275,25 @@ function showSkillButtons(unit) {
     const skill = SKILL_EFFECTS[skillName];
     if (!skill) return;
     
-    const canUse = unit.energy >= skill.cost;
+    // 计算实际消耗（队长技能可能减少消耗）
+    let actualCost = skill.cost;
+    let isLeaderBoosted = false;
+    
+    if (unit.isLeader && typeof LEADER_BONUS !== 'undefined' && LEADER_BONUS[unit.name]) {
+      const bonus = LEADER_BONUS[unit.name];
+      if (skillName === bonus.skill && bonus.costReduce) {
+        actualCost = Math.max(0, skill.cost - bonus.costReduce);
+        isLeaderBoosted = true;
+      }
+    }
+    
+    const canUse = unit.energy >= actualCost;
     
     const btn = document.createElement('button');
-    btn.className = `skill-btn ${canUse ? '' : 'disabled'}`;
+    btn.className = `skill-btn ${canUse ? '' : 'disabled'} ${isLeaderBoosted ? 'leader-boosted' : ''}`;
     btn.innerHTML = `
-      ${skillName}
-      <span class="skill-cost">${skill.cost > 0 ? `⚡${skill.cost}` : '+⚡30'}</span>
+      ${isLeaderBoosted ? '👑' : ''}${skillName}
+      <span class="skill-cost">${actualCost > 0 ? `⚡${actualCost}` : '+⚡30'}</span>
     `;
     
     if (canUse) {
@@ -297,7 +322,7 @@ function selectSkill(skillName, unit) {
   } else if (skill.target === 'ally') {
     showAllyTargetSelect();
   } else {
-    executeSkill(battle.selectedSkill, null);
+    executePlayerSkill(battle.selectedSkill, null);
   }
 }
 
@@ -307,10 +332,18 @@ function showEnemyTargetSelect() {
   div.innerHTML = '<span>选择目标：</span>';
   
   battle.enemies.filter(e => e.currentHp > 0).forEach(enemy => {
+    let shieldInfo = '';
+    if (enemy.shield > 0) {
+      if (enemy.shieldBroken) {
+        shieldInfo = ' 💥已破';
+      } else {
+        shieldInfo = ` 🛡️${enemy.currentShield}/${enemy.shield}`;
+      }
+    }
     const btn = document.createElement('button');
     btn.className = 'target-btn';
-    btn.textContent = `${enemy.name} (HP:${enemy.currentHp})`;
-    btn.onclick = () => executeSkill(battle.selectedSkill, enemy);
+    btn.textContent = `${enemy.name} (HP:${enemy.currentHp}${shieldInfo})`;
+    btn.onclick = () => executePlayerSkill(battle.selectedSkill, enemy);
     div.appendChild(btn);
   });
 }
@@ -324,360 +357,153 @@ function showAllyTargetSelect() {
     const btn = document.createElement('button');
     btn.className = 'target-btn ally';
     btn.textContent = `${ally.name} (HP:${ally.currentHp})`;
-    btn.onclick = () => executeSkill(battle.selectedSkill, ally);
+    btn.onclick = () => executePlayerSkill(battle.selectedSkill, ally);
     div.appendChild(btn);
   });
 }
 
-// 执行技能
-function executeSkill(skill, target) {
+// ==================== 技能执行（玩家） ====================
+
+// 执行玩家技能
+function executePlayerSkill(skill, target) {
   const user = skill.user;
-  const atk = user.atk + user.buffAtk;
   
-  user.energy -= skill.cost;
+  // 计算实际消耗（队长技能可能减少消耗）
+  let actualCost = skill.cost;
+  if (user.isLeader && typeof LEADER_BONUS !== 'undefined' && LEADER_BONUS[user.name]) {
+    const bonus = LEADER_BONUS[user.name];
+    if (skill.name === bonus.skill && bonus.costReduce) {
+      actualCost = Math.max(0, skill.cost - bonus.costReduce);
+    }
+  }
+  
+  // 消耗和获得能量
+  user.energy -= actualCost;
   user.energy = Math.min(user.maxEnergy, user.energy + skill.gain);
   
+  // 清空UI
   document.getElementById('skill-buttons').innerHTML = '';
   document.getElementById('target-select').innerHTML = '';
   
-  switch (skill.type) {
-    case 'damage':
-      executePlayerDamage(skill, user, atk, target);
-      break;
-    case 'heal':
-      executePlayerHeal(skill, user, atk, target);
-      break;
-    case 'buff':
-      executePlayerBuff(skill, user, atk);
-      break;
-    case 'debuff':
-      executePlayerDebuff(skill, user, atk, target);
-      break;
+  // 播放技能动画
+  if (typeof playSkillAnimation === 'function') {
+    playSkillAnimation(user.name, skill.name);
   }
   
+  addBattleLog(`${user.name} 使用【${skill.name}】`, 'system');
+  
+  // 执行技能效果，获取结果
+  const result = executeSkillEffects(skill, user, target, false);
+  
+  // 处理结果
+  handleSkillResult(result);
+  
+  // 进入下一回合
   renderBattle();
   battle.currentTurn++;
   setTimeout(() => nextTurn(), 1000);
 }
 
-// 玩家伤害技能
-function executePlayerDamage(skill, user, atk, target) {
-  const calcDamage = (t) => Math.max(1, Math.floor(atk * skill.multiplier - t.def * 0.5));
+// 处理技能执行结果
+function handleSkillResult(result) {
+  // 输出日志
+  result.logs.forEach(log => {
+    addBattleLog(log.text, log.type);
+  });
+}
+
+// ==================== 回合控制 ====================
+
+// 下一回合
+function nextTurn() {
+  if (!battle.active) return;
   
-  switch (skill.target) {
-    case 'single':
-      if (target) {
-        const dmg = calcDamage(target);
-        target.currentHp -= dmg;
-        addBattleLog(`${user.name}【${skill.name}】→ ${target.name}，${dmg} 伤害！`, 'damage');
-        if (target.currentHp <= 0) {
-          addBattleLog(`💀 ${target.name} 被击败！`, 'system');
-        }
-      }
-      break;
-      
-    case 'all':
-      addBattleLog(`${user.name}【${skill.name}】！`, 'damage');
-      battle.enemies.filter(e => e.currentHp > 0).forEach(enemy => {
-        const dmg = calcDamage(enemy);
-        enemy.currentHp -= dmg;
-        addBattleLog(`  → ${enemy.name} 受到 ${dmg} 伤害！`, 'damage');
-        if (enemy.currentHp <= 0) {
-          addBattleLog(`💀 ${enemy.name} 被击败！`, 'system');
-        }
-      });
-      break;
-      
-    case 'random3':
-    case 'random2':
-      const times = skill.target === 'random3' ? 3 : 2;
-      addBattleLog(`${user.name}【${skill.name}】！`, 'damage');
-      for (let i = 0; i < times; i++) {
-        const alive = battle.enemies.filter(e => e.currentHp > 0);
-        if (alive.length === 0) break;
-        const t = alive[Math.floor(Math.random() * alive.length)];
-        const dmg = calcDamage(t);
-        t.currentHp -= dmg;
-        addBattleLog(`  → ${t.name} 受到 ${dmg} 伤害！`, 'damage');
-        if (t.currentHp <= 0) {
-          addBattleLog(`💀 ${t.name} 被击败！`, 'system');
-        }
-      }
-      break;
+  const aliveAllies = battle.allies.filter(u => u.currentHp > 0);
+  const aliveEnemies = battle.enemies.filter(u => u.currentHp > 0);
+  
+  if (aliveEnemies.length === 0) {
+    endBattle(true);
+    return;
+  }
+  if (aliveAllies.length === 0) {
+    endBattle(false);
+    return;
+  }
+  
+  if (battle.currentTurn >= battle.turnOrder.length) {
+    calculateTurnOrder();
+    battle.currentTurn = 0;
+    addBattleLog('--- 新回合 ---', 'system');
+  }
+  
+  let current = battle.turnOrder[battle.currentTurn];
+  
+  // 跳过死亡单位
+  while (current && current.currentHp <= 0) {
+    battle.currentTurn++;
+    if (battle.currentTurn >= battle.turnOrder.length) {
+      setTimeout(() => nextTurn(), 500);
+      return;
+    }
+    current = battle.turnOrder[battle.currentTurn];
+  }
+  
+  if (!current) {
+    setTimeout(() => nextTurn(), 500);
+    return;
+  }
+  
+  // 处理眩晕
+  if (current.stunDuration > 0) {
+    current.stunDuration--;
+    addBattleLog(`${current.name} 处于眩晕状态，跳过行动！`, 'system');
+    // 眩晕时不恢复护盾，只跳过行动
+    renderBattle();
+    battle.currentTurn++;
+    setTimeout(() => nextTurn(), 800);
+    return;
+  }
+  
+  // 正常行动开始时，检查是否需要恢复护盾
+  if (current.shieldBroken) {
+    current.shieldBroken = false;
+    current.currentShield = current.shield;
+    current.def = current.originalDef;
+    addBattleLog(`${current.name} 护盾恢复！`, 'system');
+  }
+  
+  renderBattle();
+  
+  if (current.isEnemy) {
+    setTimeout(() => enemyTurn(current), 800);
+  } else {
+    showSkillButtons(current);
   }
 }
 
-// 玩家治疗技能
-function executePlayerHeal(skill, user, atk, target) {
-  const healAmt = Math.floor(atk * skill.multiplier);
-  
-  switch (skill.target) {
-    case 'ally':
-      if (target) {
-        target.currentHp = Math.min(target.maxHp, target.currentHp + healAmt);
-        addBattleLog(`${user.name}【${skill.name}】→ ${target.name}，+${healAmt} HP！`, 'heal');
-      }
-      break;
-      
-    case 'all_ally':
-      battle.allies.filter(a => a.currentHp > 0).forEach(ally => {
-        ally.currentHp = Math.min(ally.maxHp, ally.currentHp + healAmt);
-      });
-      addBattleLog(`${user.name}【${skill.name}】全体恢复 ${healAmt} HP！`, 'heal');
-      break;
-  }
-}
-
-// 玩家增益技能
-function executePlayerBuff(skill, user, atk) {
-  const buffAmt = Math.floor(atk * skill.multiplier);
-  
-  switch (skill.target) {
-    case 'self':
-      user.buffAtk += buffAmt;
-      addBattleLog(`${user.name}【${skill.name}】ATK +${buffAmt}！`, 'system');
-      break;
-      
-    case 'all_ally':
-      battle.allies.filter(a => a.currentHp > 0).forEach(ally => {
-        ally.buffAtk += buffAmt;
-      });
-      addBattleLog(`${user.name}【${skill.name}】全体 ATK +${buffAmt}！`, 'system');
-      break;
-  }
-}
-
-// 玩家减益技能
-function executePlayerDebuff(skill, user, atk, target) {
-  const debuffAmt = skill.multiplier;
-  
-  switch (skill.target) {
-    case 'all':
-      battle.enemies.filter(e => e.currentHp > 0).forEach(enemy => {
-        const reduction = Math.floor(enemy.atk * debuffAmt);
-        enemy.atk = Math.max(1, enemy.atk - reduction);
-      });
-      addBattleLog(`${user.name}【${skill.name}】敌方全体 ATK 降低！`, 'system');
-      break;
-      
-    case 'single':
-      if (target) {
-        const reduction = Math.floor(target.atk * debuffAmt);
-        target.atk = Math.max(1, target.atk - reduction);
-        addBattleLog(`${user.name}【${skill.name}】→ ${target.name}，ATK -${reduction}！`, 'system');
-      }
-      break;
-  }
-}
-
-// ==================== 敌人AI ====================
-
-// 敌人AI主函数
-function enemyAI(enemy) {
+// 敌人回合
+function enemyTurn(enemy) {
   const aliveAllies = battle.allies.filter(a => a.currentHp > 0);
   const aliveEnemies = battle.enemies.filter(e => e.currentHp > 0);
+  
   if (aliveAllies.length === 0) return;
   
-  const skill = chooseEnemySkill(enemy, aliveAllies, aliveEnemies);
-  executeEnemySkill(enemy, skill, aliveAllies, aliveEnemies);
+  // 获取敌人决策
+  const decision = getEnemyDecision(enemy, aliveAllies, aliveEnemies);
   
+  // 日志
+  addBattleLog(`${enemy.name}【${decision.strategy}·${decision.skill.name}】`, 'system');
+  
+  // 执行技能效果
+  const result = executeSkillEffects(decision.skill, enemy, decision.target, true);
+  
+  // 处理结果
+  handleSkillResult(result);
+  
+  // 进入下一回合
   renderBattle();
   battle.currentTurn++;
   setTimeout(() => nextTurn(), 1000);
-}
-
-// 敌人选择技能
-function chooseEnemySkill(enemy, aliveAllies, aliveEnemies) {
-  const skills = enemy.skills || ['普攻'];
-  
-  if (skills.length === 1) {
-    return { ...SKILL_EFFECTS['普攻'], name: '普攻' };
-  }
-  
-  const hpPercent = enemy.currentHp / enemy.maxHp;
-  const injuredAllies = aliveEnemies.filter(e => e.currentHp / e.maxHp < 0.5);
-  
-  if (injuredAllies.length > 0) {
-    if (skills.includes('群体治疗') && injuredAllies.length >= 2 && SKILL_EFFECTS['群体治疗']) {
-      return { ...SKILL_EFFECTS['群体治疗'], name: '群体治疗' };
-    }
-    if (skills.includes('战地治疗') && SKILL_EFFECTS['战地治疗']) {
-      return { ...SKILL_EFFECTS['战地治疗'], name: '战地治疗' };
-    }
-  }
-  
-  if (hpPercent < 0.3 && skills.includes('狂暴') && SKILL_EFFECTS['狂暴']) {
-    return { ...SKILL_EFFECTS['狂暴'], name: '狂暴' };
-  }
-  
-  if (aliveAllies.length >= 3) {
-    if (skills.includes('烈焰风暴') && SKILL_EFFECTS['烈焰风暴']) {
-      return { ...SKILL_EFFECTS['烈焰风暴'], name: '烈焰风暴' };
-    }
-    if (skills.includes('横扫') && SKILL_EFFECTS['横扫']) {
-      return { ...SKILL_EFFECTS['横扫'], name: '横扫' };
-    }
-  }
-  
-  if (Math.random() < 0.6) {
-    const specialSkills = skills.filter(s => s !== '普攻' && SKILL_EFFECTS[s]);
-    if (specialSkills.length > 0) {
-      const chosen = specialSkills[Math.floor(Math.random() * specialSkills.length)];
-      return { ...SKILL_EFFECTS[chosen], name: chosen };
-    }
-  }
-  
-  return { ...SKILL_EFFECTS['普攻'], name: '普攻' };
-}
-
-// 执行敌人技能
-function executeEnemySkill(enemy, skill, aliveAllies, aliveEnemies) {
-  const atk = enemy.atk + (enemy.buffAtk || 0);
-  
-  switch (skill.type) {
-    case 'damage':
-      executeEnemyDamage(enemy, skill, atk, aliveAllies);
-      break;
-    case 'enemy_heal':
-      executeEnemyHeal(enemy, skill, atk, aliveEnemies);
-      break;
-    case 'enemy_buff':
-      executeEnemyBuff(enemy, skill, atk);
-      break;
-    case 'enemy_debuff':
-      executeEnemyDebuff(enemy, skill, atk, aliveAllies);
-      break;
-    default:
-      executeEnemyDamage(enemy, skill, atk, aliveAllies);
-  }
-}
-
-// 智能选择目标
-function chooseTarget(enemy, aliveAllies) {
-  const calcExpectedDmg = (t) => Math.max(1, Math.floor(enemy.atk - t.def * 0.5));
-  
-  const scores = aliveAllies.map(target => {
-    let score = 0;
-    const expectedDmg = calcExpectedDmg(target);
-    
-    if (target.currentHp <= expectedDmg) score += 1000;
-    if (target.currentHp / target.maxHp < 0.3) score += 200;
-    if (target.skills && target.skills.some(s => s.includes('治疗') || s.includes('群疗'))) score += 150;
-    if (target.energy >= 70) score += 100;
-    
-    const maxAtk = Math.max(...aliveAllies.map(a => a.atk));
-    score += (target.atk / maxAtk) * 80;
-    score += Math.random() * 30;
-    
-    return { target, score };
-  });
-  
-  scores.sort((a, b) => b.score - a.score);
-  return scores[0].target;
-}
-
-// 获取AI策略描述
-function getStrategy(enemy, target, aliveAllies) {
-  const calcExpectedDmg = (t) => Math.max(1, Math.floor(enemy.atk - t.def * 0.5));
-  const expectedDmg = calcExpectedDmg(target);
-  
-  if (target.currentHp <= expectedDmg) return '补刀';
-  if (target.currentHp / target.maxHp < 0.3) return '集火残血';
-  if (target.skills && target.skills.some(s => s.includes('治疗') || s.includes('群疗'))) return '针对治疗';
-  if (target.energy >= 70) return '阻断大招';
-  
-  return '择优攻击';
-}
-
-// 敌人伤害技能
-function executeEnemyDamage(enemy, skill, atk, aliveAllies) {
-  const calcDamage = (t) => Math.max(1, Math.floor(atk * skill.multiplier - t.def * 0.5));
-  
-  const applyDamage = (t, dmg) => {
-    t.currentHp -= dmg;
-    t.energy = Math.min(t.maxEnergy, t.energy + 20);
-  };
-  
-  switch (skill.target) {
-    case 'single': {
-      const target = chooseTarget(enemy, aliveAllies);
-      const dmg = calcDamage(target);
-      const strategy = getStrategy(enemy, target, aliveAllies);
-      applyDamage(target, dmg);
-      addBattleLog(`${enemy.name}【${strategy}·${skill.name}】→ ${target.name}，${dmg} 伤害！`, 'damage');
-      if (target.currentHp <= 0) {
-        addBattleLog(`💀 ${target.name} 被击败！`, 'system');
-      }
-      break;
-    }
-    case 'all_enemy': {
-      addBattleLog(`${enemy.name}【群攻·${skill.name}】！`, 'damage');
-      aliveAllies.forEach(target => {
-        const dmg = calcDamage(target);
-        applyDamage(target, dmg);
-        addBattleLog(`  → ${target.name} 受到 ${dmg} 伤害！`, 'damage');
-        if (target.currentHp <= 0) {
-          addBattleLog(`💀 ${target.name} 被击败！`, 'system');
-        }
-      });
-      break;
-    }
-    case 'random2':
-    case 'random3': {
-      const times = skill.target === 'random3' ? 3 : 2;
-      addBattleLog(`${enemy.name}【连击·${skill.name}】！`, 'damage');
-      for (let i = 0; i < times; i++) {
-        const alive = aliveAllies.filter(a => a.currentHp > 0);
-        if (alive.length === 0) break;
-        const target = alive[Math.floor(Math.random() * alive.length)];
-        const dmg = calcDamage(target);
-        applyDamage(target, dmg);
-        addBattleLog(`  → ${target.name} 受到 ${dmg} 伤害！`, 'damage');
-        if (target.currentHp <= 0) {
-          addBattleLog(`💀 ${target.name} 被击败！`, 'system');
-        }
-      }
-      break;
-    }
-  }
-}
-
-// 敌人治疗
-function executeEnemyHeal(enemy, skill, atk, aliveEnemies) {
-  const healAmt = Math.floor(atk * skill.multiplier);
-  
-  switch (skill.target) {
-    case 'ally_lowest': {
-      const target = aliveEnemies.reduce((a, b) => 
-        (a.currentHp / a.maxHp) < (b.currentHp / b.maxHp) ? a : b
-      );
-      target.currentHp = Math.min(target.maxHp, target.currentHp + healAmt);
-      addBattleLog(`${enemy.name}【${skill.name}】→ ${target.name}，+${healAmt} HP！`, 'heal');
-      break;
-    }
-    case 'all_ally_enemy': {
-      aliveEnemies.forEach(e => {
-        e.currentHp = Math.min(e.maxHp, e.currentHp + healAmt);
-      });
-      addBattleLog(`${enemy.name}【${skill.name}】全体恢复 ${healAmt} HP！`, 'heal');
-      break;
-    }
-  }
-}
-
-// 敌人增益
-function executeEnemyBuff(enemy, skill, atk) {
-  const buffAmt = Math.floor(atk * skill.multiplier);
-  enemy.buffAtk = (enemy.buffAtk || 0) + buffAmt;
-  addBattleLog(`${enemy.name}【${skill.name}】ATK +${buffAmt}！`, 'system');
-}
-
-// 敌人减益（对玩家）
-function executeEnemyDebuff(enemy, skill, atk, aliveAllies) {
-  const target = chooseTarget(enemy, aliveAllies);
-  const debuffAmt = Math.floor(target.def * skill.multiplier);
-  target.def = Math.max(0, target.def - debuffAmt);
-  addBattleLog(`${enemy.name}【${skill.name}】→ ${target.name}，DEF -${debuffAmt}！`, 'system');
 }
 
 // ==================== 战斗结束 ====================

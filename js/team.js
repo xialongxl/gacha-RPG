@@ -1,5 +1,8 @@
 // ==================== 队伍系统 ====================
 
+// 记录上次渲染的队伍状态
+let lastRenderedTeam = null;
+
 // 更新队伍UI
 function updateTeamUI() {
   renderTeamSlots();
@@ -9,23 +12,43 @@ function updateTeamUI() {
 // 渲染队伍槽位（用Spine）
 function renderTeamSlots() {
   const slotsDiv = document.getElementById('team-slots');
+  
+  // 检查队伍是否有变化
+  const currentTeam = JSON.stringify(state.team);
+  if (lastRenderedTeam === currentTeam && slotsDiv.children.length > 0) {
+    return;
+  }
+  lastRenderedTeam = currentTeam;
+  
   slotsDiv.innerHTML = '';
   
   state.team.forEach((charName, i) => {
     const slot = document.createElement('div');
-    slot.className = `team-slot ${charName ? 'filled' : ''} ${selectedSlot === i ? 'selected' : ''}`;
+    const isLeader = i === 0;
+    slot.className = `team-slot ${charName ? 'filled' : ''} ${selectedSlot === i ? 'selected' : ''} ${isLeader ? 'leader' : ''}`;
     
     if (charName) {
       const data = CHARACTER_DATA[charName];
+      const potential = state.inventory[charName]?.potential || 1;
+      const stars = '★'.repeat(data.rarity);
       const mediaHtml = createSpineMedia(data, charName, 'slot-spine', 125, 160);
       
+      const hasLeaderSkill = typeof LEADER_BONUS !== 'undefined' && LEADER_BONUS[charName];
+      const leaderBadge = isLeader ? '<div class="leader-badge">👑队长</div>' : '';
+      const leaderSkillInfo = isLeader && hasLeaderSkill ? `<div class="leader-skill-info">队长技：${LEADER_BONUS[charName].skill}强化</div>` : '';
+      
       slot.innerHTML = `
+        ${leaderBadge}
         ${mediaHtml}
+        <div class="slot-stars">${stars}</div>
         <div class="slot-name">${charName}</div>
-        <div class="slot-info">${data.rarity} | ATK:${data.atk}</div>
+        <div class="slot-info">潜能${potential} | ATK:${applyPotentialBonus(data.atk, potential)}</div>
+        ${leaderSkillInfo}
       `;
     } else {
+      const leaderHint = isLeader ? '<div class="leader-badge">👑队长位</div>' : '';
       slot.innerHTML = `
+        ${leaderHint}
         <div class="img-placeholder" style="width:125px;height:160px;display:flex;align-items:center;justify-content:center;font-size:32px;">+</div>
         <div class="slot-name">空槽位</div>
         <div class="slot-info">点击选择</div>
@@ -42,32 +65,57 @@ function renderCharacterList() {
   const listDiv = document.getElementById('char-list');
   listDiv.innerHTML = '';
   
-  const sortOrder = { SSR: 0, SR: 1, R: 2, N: 3 };
+  // 按星级排序（高到低）
   const sorted = Object.entries(state.inventory).sort((a, b) => {
     const rarityA = CHARACTER_DATA[a[0]].rarity;
     const rarityB = CHARACTER_DATA[b[0]].rarity;
-    return sortOrder[rarityA] - sortOrder[rarityB];
+    return rarityB - rarityA;
   });
   
   sorted.forEach(([name, info]) => {
     const data = CHARACTER_DATA[name];
+    const potential = info.potential || 1;
+    const bonus = Math.round((potential - 1) * CONFIG.POTENTIAL_BONUS_PER_LEVEL * 100);
+    const stars = '★'.repeat(data.rarity);
+    
+    const hasLeaderSkill = typeof LEADER_BONUS !== 'undefined' && LEADER_BONUS[name];
+    const leaderIcon = hasLeaderSkill ? '👑' : '';
+    
     const item = document.createElement('div');
-    item.className = `char-item ${data.rarity.toLowerCase()}`;
+    item.className = `char-item star-${data.rarity}`;
     
     item.innerHTML = `
       <div class="char-header">
-        <span class="char-rarity">${data.rarity}</span>
-        <span class="char-count">x${info.count}</span>
+        <span class="char-stars">${stars}</span>
       </div>
-      <div class="char-name">${name}</div>
+      <div class="char-header">
+        <span class="char-potential">潜能${potential}</span>
+      </div>
+      <div class="char-name">${leaderIcon}${name}</div>
       <div class="char-stats-grid">
-        <div>HP:${data.hp}</div>
-        <div>ATK:${data.atk}</div>
-        <div>DEF:${data.def}</div>
+        <div>HP:${applyPotentialBonus(data.hp, potential)}</div>
+        <div>ATK:${applyPotentialBonus(data.atk, potential)}</div>
+        <div>DEF:${applyPotentialBonus(data.def, potential)}</div>
         <div>SPD:${data.spd}</div>
       </div>
+      ${bonus > 0 ? `<div class="char-bonus">+${bonus}% 属性</div>` : ''}
+      ${hasLeaderSkill ? `<div class="char-leader-hint">可作为队长</div>` : ''}
     `;
-    item.onclick = () => assignToSlot(name);
+    
+    // 单击查看详情
+    // 左键编队
+    item.onclick = (e) => {
+      e.stopPropagation();
+      assignToSlot(name);
+    };
+
+    // 右键查看详情
+    item.oncontextmenu = (e) => {
+      e.preventDefault(); // 阻止默认右键菜单
+      e.stopPropagation();
+      showCharDetail(name);
+    };
+    
     listDiv.appendChild(item);
   });
   
@@ -81,6 +129,7 @@ function selectSlot(index) {
   if (selectedSlot === index) {
     if (state.team[index]) {
       state.team[index] = null;
+      lastRenderedTeam = null;
       saveState();
     }
     selectedSlot = null;
@@ -104,6 +153,7 @@ function assignToSlot(charName) {
   
   state.team[selectedSlot] = charName;
   selectedSlot = null;
+  lastRenderedTeam = null;
   
   updateTeamUI();
   saveState();

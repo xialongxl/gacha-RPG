@@ -1,35 +1,49 @@
-// 抽卡系统
+// ==================== 抽卡系统 ====================
 
 // 单次抽取
 function pull() {
   state.pity++;
   let rarity;
-  const rand = Math.random();
+  const rand = Math.random() * 100;
 
   // 保底判定
   if (state.pity >= CONFIG.PITY) {
-    rarity = 'SSR';
+    rarity = 6;
     state.pity = 0;
-  } else if (rand < CONFIG.SSR_RATE) {
-    rarity = 'SSR';
+  } else if (rand < CONFIG.RATES[6]) {
+    // 6星
+    rarity = 6;
     state.pity = 0;
-  } else if (rand < CONFIG.SSR_RATE + CONFIG.SR_RATE) {
-    rarity = 'SR';
-  } else if (rand < CONFIG.SSR_RATE + CONFIG.SR_RATE + CONFIG.R_RATE) {
-    rarity = 'R';
+  } else if (rand < CONFIG.RATES[6] + CONFIG.RATES[5]) {
+    // 5星
+    rarity = 5;
+  } else if (rand < CONFIG.RATES[6] + CONFIG.RATES[5] + CONFIG.RATES[4]) {
+    // 4星
+    rarity = 4;
   } else {
-    rarity = 'N';
+    // 3星
+    rarity = 3;
   }
 
   // 从对应稀有度池中随机选角色
   const pool = Object.entries(CHARACTER_DATA).filter(([_, d]) => d.rarity === rarity);
   const [charName] = pool[Math.floor(Math.random() * pool.length)];
 
-  // 添加到仓库
-  if (!state.inventory[charName]) {
-    state.inventory[charName] = { count: 0 };
+  // 添加到仓库或提升潜能
+  if (state.inventory[charName]) {
+    // 已有该干员 - 确保 potential 有默认值
+    const currentPotential = state.inventory[charName].potential || 1;
+    if (currentPotential < 12) {
+      state.inventory[charName].potential = currentPotential + 1;
+    } else {
+      // 满潜转金币
+      state.gold += CONFIG.GOLD_CONVERT[rarity];
+    }
+    state.inventory[charName].count++;
+  } else {
+    // 新干员
+    state.inventory[charName] = { count: 1, potential: 1 };
   }
-  state.inventory[charName].count++;
 
   return { rarity, name: charName };
 }
@@ -72,8 +86,7 @@ function dailyLogin() {
   }
   state.lastDaily = today;
   state.tickets += 10;
-  state.stamina = CONFIG.STAMINA_MAX;
-  alert('签到成功！+10抽卡券，体力已恢复满');
+  alert('签到成功！+10抽卡券');
   updateResourceUI();
   saveState();
 }

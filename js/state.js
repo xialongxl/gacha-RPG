@@ -1,8 +1,9 @@
+// ==================== 游戏状态 ====================
+
 // 游戏状态
 let state = {
   tickets: 50,
   gold: 1000,
-  stamina: 100,
   pity: 0,
   lastDaily: null,
   inventory: {},
@@ -31,6 +32,16 @@ function loadState() {
   if (saved) {
     const parsed = JSON.parse(saved);
     state = { ...state, ...parsed };
+    
+    // 数据迁移：确保所有角色都有 potential 字段
+    Object.keys(state.inventory).forEach(name => {
+      if (!state.inventory[name].potential) {
+        state.inventory[name].potential = 1;
+      }
+    });
+    
+    // 保存迁移后的数据
+    saveState();
   }
 }
 

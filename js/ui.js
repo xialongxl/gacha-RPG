@@ -32,49 +32,46 @@ function createSpinePlayer(containerId, spineData) {
     return false;
   }
   
-  setTimeout(() => {
-    const container = document.getElementById(containerId);
-    if (!container) return;
+  const container = document.getElementById(containerId);
+  if (!container) return false;
+  
+  // 已经有内容了，跳过
+  if (container.children.length > 0) return true;
+  
+  // viewport参数
+  const vpWidth = 100;
+  const vpHeight = 350;
+  
+  try {
+    const player = new spine.SpinePlayer(containerId, {
+      skelUrl: spineData.skel,
+      atlasUrl: spineData.atlas,
+      animation: spineData.animation || 'Idle',
+      premultipliedAlpha: true,
+      backgroundColor: '#00000000',
+      alpha: true,
+      showControls: false,
+      viewport: {
+        x: -vpWidth / 2,
+        y: 0,
+        width: vpWidth,
+        height: vpHeight
+      },
+      success: function(player) {
+        console.log('Spine加载成功:', containerId);
+        removeAllSpineUI();
+      },
+      error: function(player, msg) {
+        console.error('Spine加载失败:', msg);
+        showPlaceholder(containerId);
+      }
+    });
     
-    // viewport参数
-    const vpWidth = 50;
-    const vpHeight = 500;
-    
-    try {
-      const player = new spine.SpinePlayer(containerId, {
-        skelUrl: spineData.skel,
-        atlasUrl: spineData.atlas,
-        animation: spineData.animation || 'Idle',
-        premultipliedAlpha: true,
-        backgroundColor: '#00000000',
-        alpha: true,
-        showControls: false,
-        viewport: {
-          x: -vpWidth / 2,
-          y: -30,
-          width: vpWidth,
-          height: vpHeight
-        },
-        success: function(player) {
-          console.log('Spine加载成功:', containerId);
-          removeAllSpineUI();
-          setTimeout(removeAllSpineUI, 100);
-          setTimeout(removeAllSpineUI, 300);
-          setTimeout(removeAllSpineUI, 500);
-          setTimeout(removeAllSpineUI, 1000);
-        },
-        error: function(player, msg) {
-          console.error('Spine加载失败:', msg);
-          showPlaceholder(containerId);
-        }
-      });
-      
-      spineInstances.set(containerId, player);
-    } catch (e) {
-      console.error('Spine初始化失败:', e);
-      showPlaceholder(containerId);
-    }
-  }, 100);
+    spineInstances.set(containerId, player);
+  } catch (e) {
+    console.error('Spine初始化失败:', e);
+    showPlaceholder(containerId);
+  }
   
   return true;
 }
@@ -92,10 +89,22 @@ function createSpineMedia(charData, charName, className, width, height) {
   width = width || 125;
   height = height || 160;
   
-  const containerId = `char-${charName.replace(/\s/g, '_')}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+  // 用固定ID，避免重复加载
+  const containerId = `spine-${className}-${charName.replace(/\s/g, '_')}`;
   
   if (charData && charData.spine && charData.spine.skel && charData.spine.atlas) {
-    createSpinePlayer(containerId, charData.spine);
+    // 延迟加载，等DOM渲染完成
+    setTimeout(() => {
+      const container = document.getElementById(containerId);
+      if (container && container.children.length === 0) {
+        // 清理旧实例（如果有）
+        if (spineInstances.has(containerId)) {
+          spineInstances.delete(containerId);
+        }
+        createSpinePlayer(containerId, charData.spine);
+      }
+    }, 50);
+    
     return `<div id="${containerId}" class="${className} spine-container" style="width:${width}px;height:${height}px;overflow:hidden;"></div>`;
   }
   
@@ -103,11 +112,23 @@ function createSpineMedia(charData, charName, className, width, height) {
   return `<div class="img-placeholder ${className}" style="width:${width}px;height:${height}px;display:flex;align-items:center;justify-content:center;">👤</div>`;
 }
 
+// 清理指定前缀的Spine实例
+function clearSpineInstances(prefix) {
+  const toDelete = [];
+  spineInstances.forEach((instance, id) => {
+    if (id.startsWith(prefix)) {
+      toDelete.push(id);
+    }
+  });
+  toDelete.forEach(id => {
+    spineInstances.delete(id);
+  });
+}
+
 // 更新资源显示
 function updateResourceUI() {
   document.getElementById('tickets').textContent = state.tickets;
   document.getElementById('gold').textContent = state.gold;
-  document.getElementById('stamina').textContent = state.stamina;
   document.getElementById('pity').textContent = state.pity;
 }
 
@@ -126,26 +147,40 @@ function showPage(pageName) {
   }
 }
 
-// 显示抽卡结果（显示干员数据）
+// 显示抽卡结果（显示星级和干员数据）
 function showGachaResult(results) {
   const container = document.getElementById('gacha-result');
   container.innerHTML = '';
   
+  // 收集6星角色，播放演出
+  const sixStarResults = results.filter(r => r.rarity === 6);
+  sixStarResults.forEach(r => {
+    if (typeof queueCutscene === 'function') {
+      queueCutscene(r.name);
+    }
+  });
+  
+  // 显示所有抽卡结果卡片
   results.forEach((r, i) => {
     setTimeout(() => {
       const data = CHARACTER_DATA[r.name];
       const card = document.createElement('div');
-      card.className = `card ${r.rarity.toLowerCase()}`;
+      card.className = `card star-${r.rarity}`;
+      
+      const stars = '★'.repeat(r.rarity);
+      const potential = state.inventory[r.name]?.potential || 1;
+      const isNew = potential === 1 && state.inventory[r.name]?.count === 1;
       
       card.innerHTML = `
+        <div class="card-stars">${stars}</div>
+        ${isNew ? '<div class="card-new">NEW!</div>' : `<div class="card-potential">潜能${potential}</div>`}
         <div class="card-stats">
-          <div class="card-hp">HP: ${data.hp}</div>
-          <div class="card-atk">ATK: ${data.atk}</div>
-          <div class="card-def">DEF: ${data.def}</div>
-          <div class="card-spd">SPD: ${data.spd}</div>
+          <div>HP: ${data.hp}</div>
+          <div>ATK: ${data.atk}</div>
+          <div>DEF: ${data.def}</div>
+          <div>SPD: ${data.spd}</div>
         </div>
         <div class="card-info">
-          <div class="card-rarity">${r.rarity}</div>
           <div class="card-name">${r.name}</div>
         </div>
       `;
@@ -173,6 +208,9 @@ function closeBattleField() {
   document.getElementById('stage-panel').style.display = 'block';
   document.getElementById('skill-buttons').innerHTML = '';
   document.getElementById('target-select').innerHTML = '';
+  
+  // 清理战斗界面的Spine实例
+  clearSpineInstances('spine-unit-spine-');
 }
 
 // 添加战斗日志
