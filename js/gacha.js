@@ -85,8 +85,8 @@ function dailyLogin() {
     return;
   }
   state.lastDaily = today;
-  state.tickets += 10;
-  alert('签到成功！+10抽卡券');
+  state.tickets += 100;
+  alert('签到成功！+100抽卡券');
   updateResourceUI();
   saveState();
 }

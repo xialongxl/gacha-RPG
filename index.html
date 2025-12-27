@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>良心抽卡RPG</title>
+  <title>不看聊天记录的小马</title>
   <link rel="stylesheet" href="css/style.css">
   <script src="lib/spine-webgl.js"></script>
   <script src="lib/spine-player.js"></script>
@@ -17,20 +17,24 @@
       <span>💎 抽卡券: <b id="tickets">50</b></span>
       <span>🪙 金币: <b id="gold">1000</b></span>
       <span>🎫 保底: <b id="pity">0</b>/20</span>
+      <span>🎖️ 无尽币: <b id="endless-coin">0</b></span>
+      <span>👗 时装券: <b id="skin-tickets">0</b></span>
     </div>
 
     <!-- 导航 -->
     <div class="nav">
-      <button class="active" data-page="gacha">抽卡</button>
-      <button data-page="team">队伍</button>
-      <button data-page="battle">战斗</button>
+      <button class="active" data-page="gacha">✨ 抽卡</button>
+      <button data-page="team">👥 队伍</button>
+      <button data-page="battle">⚔️ 战斗</button>
+      <button data-page="shop">🛒 商店</button>
+      <button id="btn-save-manage">💾 存档</button>
     </div>
 
     <!-- 抽卡页 -->
     <div id="page-gacha" class="page active">
       <div class="gacha-banner">
-        <h2>✨ 限定池：传说干员 ✨</h2>
-        <p>20抽保底SSR · 每日签到送10抽</p>
+        <h2>✨ 限定池：六星干员 ✨</h2>
+        <p>20抽保底六星 · 每日签到送100抽</p>
       </div>
 
       <div class="gacha-buttons">
@@ -75,6 +79,14 @@
           <img id="char-detail-bg-img" class="char-detail-bg-img" src="" alt="">
         </div>
         <img id="char-detail-art" class="char-detail-art" src="" alt="">
+        
+        <!-- 时装模式：左上角返回按钮 -->
+        <div id="skin-mode-back" class="skin-mode-back" onclick="exitSkinMode()">
+          <img src="assets/img/back.png" width="24px">
+        </div>
+        
+        <!-- 时装模式：右侧时装列表 -->
+        <div id="skin-mode-list" class="skin-mode-list"></div>
         
         <!-- 左侧展开面板 -->
         <div class="char-detail-panel">
@@ -134,7 +146,11 @@
         
         <!-- 右侧按钮栏 -->
         <div class="char-detail-buttons">
-          <div class="char-detail-btn" onclick="closeCharDetail(); event.stopPropagation();">
+          <div id="char-detail-skin-btn" class="char-detail-btn-skin" onclick="openCharSkinPanel(); event.stopPropagation();">
+            <div class="control-btn-flex">👗</div>
+            <span class="btn-text">时装</span>
+          </div>
+          <div class="char-detail-btn-back" onclick="closeCharDetail(); event.stopPropagation();">
             <div class="control-btn-flex"><img src="assets/img/back.png" width="30px"></div>
             <span class="btn-text">关闭</span>
           </div>
@@ -177,11 +193,54 @@
       </div>
     </div>
 
+    <!-- 商店页 -->
+    <div id="page-shop" class="page">
+      <div class="panel">
+        <h2>🛒 商店</h2>
+        
+        <!-- 货币显示 -->
+        <div class="shop-currency">
+          <span>🎖️ 无尽币: <b id="shop-endless-coin">0</b></span>
+          <span>👗 时装券: <b id="shop-skin-tickets">0</b></span>
+        </div>
+        
+        <!-- 标签切换 -->
+        <div class="shop-tabs">
+          <button class="shop-tab active" data-tab="skin-shop">👗 时装商店</button>
+          <button class="shop-tab" data-tab="coin-shop">🎖️ 无尽币商店</button>
+        </div>
+        
+        <!-- 时装商店内容 -->
+        <div id="shop-skin-shop" class="shop-content active">
+          <div id="skin-shop-list" class="skin-shop-list"></div>
+        </div>
+        
+        <!-- 无尽币商店内容 -->
+        <div id="shop-coin-shop" class="shop-content">
+          <div class="coin-shop-list">
+            <div class="coin-shop-item">
+              <div class="coin-shop-icon">👗</div>
+              <div class="coin-shop-info">
+                <div class="coin-shop-name">时装券</div>
+                <div class="coin-shop-desc">用于购买角色时装</div>
+                <div class="coin-shop-price">🎖️ 100 无尽币 = 1 时装券</div>
+              </div>
+              <div class="coin-shop-actions">
+                <input type="number" id="coin-exchange-amount" min="1" value="1" class="coin-exchange-input">
+                <button class="btn btn-primary" onclick="ShopSystem.exchangeCoinToTicket()">兑换</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 战斗页 -->
     <div id="page-battle" class="page">
       <div class="panel" id="stage-panel">
         <h2>选择关卡</h2>
         <div class="stage-select" id="stage-list"></div>
+        <button onclick="showEndlessMode()" class="btn-endless">🏰 无尽模式</button>
       </div>
 
       <div class="battle-field" id="battle-field">
@@ -219,19 +278,28 @@
     </div>
   </div>
 
-  <!-- 按顺序加载JS模块 -->
-  <script src="js/config.js"></script>
-  <script src="js/data.js"></script>
-  <script src="js/state.js"></script>
-  <script src="js/cutscene.js"></script>
-  <script src="js/ui.js"></script>
-  <script src="js/charDetail.js"></script>
-  <script src="js/gacha.js"></script>
-  <script src="js/team.js"></script>
-  <script src="js/battle.js"></script>
-  <script src="js/skills.js"></script>
-  <script src="js/enemyAI.js"></script>
-  <script src="js/exchange.js"></script>
-  <script src="js/main.js"></script>
+<!-- Dexie.js 数据库（SmartAI需要） -->
+<script src="lib/dexie.js"></script>
+
+<!-- 按顺序加载JS模块 -->
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/skin.js"></script>
+<script src="js/shop.js"></script>
+<script src="js/state.js"></script>
+<script src="js/summon.js"></script>
+<script src="js/endless_and_smartAI/smartAI.js"></script>
+<script src="js/endless_and_smartAI/smartAI_battle.js"></script>
+<script src="js/cutscene.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/charDetail.js"></script>
+<script src="js/gacha.js"></script>
+<script src="js/team.js"></script>
+<script src="js/skills.js"></script>
+<script src="js/enemyAI.js"></script>
+<script src="js/battle.js"></script>
+<script src="js/endless_and_smartAI/endless.js"></script>
+<script src="js/exchange.js"></script>
+<script src="js/main.js"></script>
 </body>
 </html>

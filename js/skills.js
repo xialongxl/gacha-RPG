@@ -2,12 +2,19 @@
 
 const LEADER_BONUS = {
   '铃兰': {
-    skill: '狐火泯然',
+    skill: '狐火渺然',
     costReduce: 10,
     healBonus: 0.05,
     debuffBonus: 0.05,
     extraEffects: [
       { type: 'buff', stat: 'atk', multiplier: 0.1, target: 'all_ally' }
+    ]
+  },
+  '缪尔赛思': {
+    skill: '浅层非熵适应',
+    costReduce: 10,
+    extraEffects: [
+      { type: 'summon_buff', buffType: 'atkPercent', value: 10 }  // 额外+10% ATK给召唤物
     ]
   }
 };
@@ -265,7 +272,7 @@ const SKILL_EFFECTS = {
       { type: 'damage', multiplier: 1.6 }
     ]
   },
-  '狐火泯然': {
+  '狐火渺然': {
     cost: 70,
     gain: 0,
     target: 'all',
@@ -273,6 +280,43 @@ const SKILL_EFFECTS = {
     effects: [
       { type: 'heal', multiplier: 0.2, target: 'all_ally' },
       { type: 'debuff', stat: 'spd', multiplier: 0.3, target: 'all_enemy' }
+    ]
+  },
+
+  // ========== 缪尔赛思技能 ==========
+  '渐进性润化': {
+    cost: 30,
+    gain: 0,
+    target: 'self',
+    desc: '消耗30能量，全队回复15能量，自身与流形ATK+20%、SPD+10（可叠加）',
+    effects: [
+      { type: 'team_energy', amount: 15 },
+      { type: 'summon_buff', buffType: 'atkPercent', value: 20 },
+      { type: 'summon_buff', buffType: 'spdFlat', value: 10 },
+      { type: 'owner_buff', buffType: 'atkPercent', value: 20 },
+      { type: 'owner_buff', buffType: 'spdFlat', value: 10 }
+    ]
+  },
+  '生态耦合': {
+    cost: 40,
+    gain: 0,
+    target: 'self',
+    desc: '消耗40能量，全队回复20能量，流形每回合回复15%HP + 攻击变为二连击',
+    effects: [
+      { type: 'team_energy', amount: 20 },
+      { type: 'summon_buff', buffType: 'healPerTurn', value: 15 },
+      { type: 'summon_buff', buffType: 'doubleAttack', value: true }
+    ]
+  },
+  '浅层非熵适应': {
+    cost: 50,
+    gain: 0,
+    target: 'self',
+    desc: '消耗50能量，全队回复25能量，自身ATK+30%，流形普攻附带眩晕1回合',
+    effects: [
+      { type: 'team_energy', amount: 25 },
+      { type: 'owner_buff', buffType: 'atkPercent', value: 30 },
+      { type: 'summon_buff', buffType: 'stunOnHit', value: true }
     ]
   },
 
@@ -431,6 +475,32 @@ function getSkillCost(skillName, user) {
 }
 
 /**
+ * 获取单位实际ATK（含所有buff）
+ * @param {Object} unit - 单位
+ * @returns {number} 实际ATK
+ */
+function getUnitAtk(unit) {
+  let atk = unit.atk;
+  
+  // 固定值加成
+  if (unit.buffAtk) {
+    atk += unit.buffAtk;
+  }
+  
+  // 百分比加成（干员）
+  if (unit.buffAtkPercent) {
+    atk = Math.floor(atk * (1 + unit.buffAtkPercent / 100));
+  }
+  
+  // 召唤物专属buff
+  if (unit.isSummon && unit.buffs) {
+    atk = Math.floor(atk * (1 + (unit.buffs.atkPercent || 0) / 100));
+  }
+  
+  return atk;
+}
+
+/**
  * 执行技能效果
  * @param {Object} skill - 技能数据
  * @param {Object} user - 使用者
@@ -474,7 +544,8 @@ function executeSkillEffects(skill, user, target, isEnemy) {
     }
   }
   
-  const atk = user.atk + (user.buffAtk || 0);
+  // 获取实际ATK
+  const atk = getUnitAtk(user);
   
   effects.forEach(effect => {
     const effectTarget = effect.target || skill.target;
@@ -498,27 +569,404 @@ function executeSkillEffects(skill, user, target, isEnemy) {
       case 'shield_break':
         executeShieldBreakEffect(effect, target, effectTarget, isEnemy, result);
         break;
+      // ====== 新增：召唤系统相关效果 ======
+      case 'team_energy':
+        executeTeamEnergyEffect(effect, user, isEnemy, result);
+        break;
+      case 'summon_buff':
+        executeSummonBuffEffect(effect, user, result);
+        break;
+      case 'owner_buff':
+        executeOwnerBuffEffect(effect, user, result);
+        break;
     }
   });
   
   return result;
 }
 
-// 伤害效果
+// ==================== 词缀效果系统 ====================
+
+/**
+ * 检查是否有词缀
+ */
+function hasAffix(unit, affixName) {
+  return unit.affixes && unit.affixes.includes(affixName);
+}
+
+/**
+ * 获取词缀配置
+ */
+function getAffixConfig(affixName) {
+  return CONFIG.AFFIX?.TYPES?.[affixName] || null;
+}
+
+/**
+ * 处理闪避词缀
+ * @returns {boolean} 是否闪避成功
+ */
+function processAffixDodge(target, result) {
+  if (!hasAffix(target, 'dodge')) return false;
+  
+  const dodgeConfig = getAffixConfig('dodge');
+  if (!dodgeConfig) return false;
+  
+  const roll = Math.random() * 100;
+  if (roll < dodgeConfig.value) {
+    result.logs.push({ text: `  💫 ${target.name} 闪避了攻击！`, type: 'system' });
+    return true;
+  }
+  return false;
+}
+
+/**
+ * 处理词缀护盾（首次受击伤害减少50%，一次性效果）
+ */
+function processAffixShield(target, damage, result) {
+  // 检查是否有护盾词缀且未使用
+  if (!hasAffix(target, 'shield')) return damage;
+  if (target.affixState?.shieldUsed) return damage;
+  
+  const shieldConfig = getAffixConfig('shield');
+  if (!shieldConfig) return damage;
+  
+  // 标记护盾已使用
+  if (!target.affixState) target.affixState = {};
+  target.affixState.shieldUsed = true;
+  
+  // 计算减伤
+  const reduction = shieldConfig.value / 100;  // 50%
+  const reducedDamage = Math.floor(damage * (1 - reduction));
+  const absorbed = damage - reducedDamage;
+  
+  result.logs.push({ 
+    text: `  🔰 ${target.name}【护盾】首次受击减伤${shieldConfig.value}%！（-${absorbed}伤害）`, 
+    type: 'system' 
+  });
+  
+  return reducedDamage;
+}
+
+/**
+ * 处理不死词缀
+ */
+function processAffixUndying(target, result) {
+  if (!hasAffix(target, 'undying')) return false;
+  if (target.affixState?.undyingTriggered) return false;
+  
+  const undyingConfig = getAffixConfig('undying');
+  if (!undyingConfig) return false;
+  
+  // 标记已触发
+  if (!target.affixState) target.affixState = {};
+  target.affixState.undyingTriggered = true;
+  
+  // 恢复HP
+  const healAmount = Math.floor(target.maxHp * undyingConfig.value / 100);
+  target.currentHp = healAmount;
+  
+  result.logs.push({ 
+    text: `  💀 ${target.name} 触发【不死】！恢复 ${healAmount} HP！`, 
+    type: 'system' 
+  });
+  
+  return true;
+}
+
+/**
+ * 处理反伤词缀
+ */
+function processAffixThorns(target, attacker, damage, result) {
+  if (!hasAffix(target, 'thorns')) return;
+  if (target.currentHp <= 0) return;
+  
+  const thornsConfig = getAffixConfig('thorns');
+  if (!thornsConfig) return;
+  
+  const reflectDamage = Math.floor(damage * thornsConfig.value / 100);
+  if (reflectDamage > 0) {
+    attacker.currentHp -= reflectDamage;
+    result.logs.push({ 
+      text: `  🦔 ${target.name} 反弹 ${reflectDamage} 伤害给 ${attacker.name}！`, 
+      type: 'damage' 
+    });
+  }
+}
+
+/**
+ * 处理吸血词缀
+ */
+function processAffixVampiric(attacker, damage, result) {
+  if (!hasAffix(attacker, 'vampiric')) return;
+  
+  const vampConfig = getAffixConfig('vampiric');
+  if (!vampConfig) return;
+  
+  const healAmount = Math.floor(damage * vampConfig.value / 100);
+  if (healAmount > 0) {
+    const oldHp = attacker.currentHp;
+    attacker.currentHp = Math.min(attacker.maxHp, attacker.currentHp + healAmount);
+    const actualHeal = attacker.currentHp - oldHp;
+    
+    if (actualHeal > 0) {
+      result.logs.push({ 
+        text: `  🩸 ${attacker.name} 吸血恢复 ${actualHeal} HP！`, 
+        type: 'heal' 
+      });
+    }
+  }
+}
+
+/**
+ * 获取狂化攻击加成
+ */
+function getAffixBerserkBonus(unit) {
+  if (!hasAffix(unit, 'berserk')) return 0;
+  
+  const berserkConfig = getAffixConfig('berserk');
+  if (!berserkConfig) return 0;
+  
+  const hpPercent = (unit.currentHp / unit.maxHp) * 100;
+  
+  if (hpPercent < berserkConfig.threshold) {
+    // 标记狂化激活
+    if (!unit.affixState) unit.affixState = {};
+    if (!unit.affixState.berserkActive) {
+      unit.affixState.berserkActive = true;
+    }
+    return berserkConfig.value / 100;
+  }
+  
+  return 0;
+}
+
+/**
+ * 处理连击词缀
+ * @returns {number} 攻击次数
+ */
+function getAffixMultiStrikeCount(unit, skillName) {
+  // 只对普攻生效
+  if (skillName !== '普攻') return 1;
+  if (!hasAffix(unit, 'multiStrike')) return 1;
+  
+  const multiConfig = getAffixConfig('multiStrike');
+  if (!multiConfig) return 1;
+  
+  const roll = Math.random() * 100;
+  if (roll < multiConfig.value) {
+    return 2;  // 连击成功，攻击2次
+  }
+  return 1;
+}
+
+/**
+ * 处理回合开始时的词缀效果（回血等）
+ */
+function processAffixTurnStart(unit, result) {
+  if (!unit.affixes || unit.affixes.length === 0) return;
+  
+  // 回血词缀
+  if (hasAffix(unit, 'regen')) {
+    const regenConfig = getAffixConfig('regen');
+    if (regenConfig) {
+      const healAmount = Math.floor(unit.maxHp * regenConfig.value / 100);
+      const oldHp = unit.currentHp;
+      unit.currentHp = Math.min(unit.maxHp, unit.currentHp + healAmount);
+      const actualHeal = unit.currentHp - oldHp;
+      
+      if (actualHeal > 0) {
+        result.logs.push({ 
+          text: `  💚 ${unit.name}【回血】恢复 ${actualHeal} HP！`, 
+          type: 'heal' 
+        });
+      }
+    }
+  }
+  
+  // 狂化状态提示
+  if (hasAffix(unit, 'berserk') && unit.affixState?.berserkActive) {
+    const berserkConfig = getAffixConfig('berserk');
+    if (berserkConfig) {
+      result.logs.push({ 
+        text: `  😤 ${unit.name}【狂化】攻击力+${berserkConfig.value}%！`, 
+        type: 'system' 
+      });
+    }
+  }
+}
+
+/**
+ * 处理死亡时的词缀效果（分裂、爆炸）
+ */
+function processAffixOnDeath(unit, result) {
+  if (!unit.affixes || unit.affixes.length === 0) return [];
+  
+  const newUnits = [];
+  
+  // 爆炸词缀
+  if (hasAffix(unit, 'explosion')) {
+    const explosionConfig = getAffixConfig('explosion');
+    if (explosionConfig) {
+      const explosionDamage = Math.floor(unit.maxHp * explosionConfig.value / 100);
+      
+      result.logs.push({ 
+        text: `  💥 ${unit.name} 触发【爆炸】！`, 
+        type: 'system' 
+      });
+      
+      // 对所有我方单位造成伤害
+      const targets = [...battle.allies, ...battle.summons].filter(u => u.currentHp > 0);
+      targets.forEach(t => {
+        t.currentHp -= explosionDamage;
+        result.logs.push({ 
+          text: `  → ${t.name} 受到 ${explosionDamage} 爆炸伤害！`, 
+          type: 'damage' 
+        });
+      });
+    }
+  }
+  
+  // 分裂词缀
+  if (hasAffix(unit, 'split')) {
+    const splitConfig = getAffixConfig('split');
+    if (splitConfig) {
+      const splitCount = splitConfig.value || 2;
+      
+      result.logs.push({ 
+        text: `  👥 ${unit.name} 触发【分裂】！分裂为 ${splitCount} 个小型单位！`, 
+        type: 'system' 
+      });
+      
+      // 创建分裂单位（属性减半）
+      for (let i = 0; i < splitCount; i++) {
+        const splitUnit = {
+          id: `${unit.id}_split_${i}`,
+          name: `${unit.name}(分裂)`,
+          hp: Math.floor(unit.maxHp * 0.3),
+          atk: Math.floor(unit.atk * 0.5),
+          def: Math.floor(unit.def * 0.5),
+          spd: unit.spd,
+          skills: ['普攻'],
+          currentHp: Math.floor(unit.maxHp * 0.3),
+          maxHp: Math.floor(unit.maxHp * 0.3),
+          energy: 0,
+          maxEnergy: 100,
+          buffAtk: 0,
+          buffAtkPercent: 0,
+          buffSpd: 0,
+          stunDuration: 0,
+          shield: 0,
+          currentShield: 0,
+          shieldBroken: false,
+          originalDef: Math.floor(unit.def * 0.5),
+          isEnemy: true,
+          isSummon: false,
+          affixes: [],  // 分裂单位没有词缀
+          enemyType: 'normal',
+          unitId: `enemy-split-${Date.now()}-${i}`
+        };
+        newUnits.push(splitUnit);
+      }
+    }
+  }
+  
+  return newUnits;
+}
+
+// ==================== 伤害效果 ====================
+
 function executeDamageEffect(effect, user, atk, target, effectTarget, isEnemy, result) {
+  // 计算狂化加成
+  const berserkBonus = getAffixBerserkBonus(user);
+  const effectiveAtk = Math.floor(atk * (1 + berserkBonus));
+  
+  // 暴击判定（玩家Roguelike强化）
+  const critBonus = user.critBonus || 0;
+  let isCrit = false;
+  if (!isEnemy && critBonus > 0) {
+    isCrit = Math.random() * 100 < critBonus;
+  }
+  const critMultiplier = isCrit ? 1.5 : 1.0;  // 暴击伤害 +50%
+  
   const calcDamage = (t) => {
     const shieldReduction = (t.currentShield > 0 && !t.shieldBroken) ? 0.5 : 1;
-    return Math.max(1, Math.floor(atk * effect.multiplier * shieldReduction - t.def * 0.5));
+    let dmg = Math.floor(effectiveAtk * effect.multiplier * shieldReduction - t.def * 0.5);
+    dmg = Math.floor(dmg * critMultiplier);  // 应用暴击
+    return Math.max(1, dmg);
   };
   
-  const enemies = isEnemy ? battle.allies : battle.enemies;
+  // 敌人攻击我方（包含召唤物），我方攻击敌人
+  const enemies = isEnemy ? [...battle.allies, ...battle.summons] : battle.enemies;
   
   const applyDamage = (t) => {
-    const dmg = calcDamage(t);
-    t.currentHp -= dmg;
-    result.logs.push({ text: `  → ${t.name} 受到 ${dmg} 伤害！`, type: 'damage' });
+    // 处理闪避词缀
+    if (processAffixDodge(t, result)) {
+      return;  // 闪避成功，不造成伤害
+    }
     
-    // 普通攻击破盾1格
+    let dmg = calcDamage(t);
+    
+    // 处理词缀护盾
+    dmg = processAffixShield(t, dmg, result);
+    
+    if (dmg <= 0) return;
+    
+    // 处理Roguelike临时护盾（玩家单位）
+    if (!t.isEnemy && t.tempShield && t.tempShield > 0) {
+      if (t.tempShield >= dmg) {
+        t.tempShield -= dmg;
+        result.logs.push({ 
+          text: `  🔰 ${t.name} 护盾吸收 ${dmg} 伤害！（剩余护盾: ${t.tempShield}）`, 
+          type: 'system' 
+        });
+        return;  // 伤害完全被护盾吸收
+      } else {
+        const absorbed = t.tempShield;
+        dmg -= t.tempShield;
+        t.tempShield = 0;
+        result.logs.push({ 
+          text: `  🔰 ${t.name} 护盾吸收 ${absorbed} 伤害并破碎！`, 
+          type: 'system' 
+        });
+      }
+    }
+    
+    t.currentHp -= dmg;
+    
+    const unitPrefix = t.isSummon ? '🔮' : '';
+    const critText = isCrit ? '💥暴击！' : '';
+    result.logs.push({ text: `  → ${unitPrefix}${t.name} 受到 ${dmg} 伤害！${critText}`, type: 'damage' });
+    
+    // 处理不死词缀
+    if (t.currentHp <= 0) {
+      if (processAffixUndying(t, result)) {
+        // 不死触发，单位存活
+      }
+    }
+    
+    // 处理反伤词缀
+    processAffixThorns(t, user, dmg, result);
+    
+    // 处理吸血词缀（敌人词缀）
+    processAffixVampiric(user, dmg, result);
+    
+    // 处理玩家Roguelike吸血强化（非敌人使用时）
+    if (!isEnemy && user.vampBonus && user.vampBonus > 0) {
+      const vampHeal = Math.floor(dmg * user.vampBonus / 100);
+      if (vampHeal > 0) {
+        const oldHp = user.currentHp;
+        user.currentHp = Math.min(user.maxHp, user.currentHp + vampHeal);
+        const actualHeal = user.currentHp - oldHp;
+        if (actualHeal > 0) {
+          result.logs.push({ 
+            text: `  💉 ${user.name} 吸血恢复 ${actualHeal} HP！`, 
+            type: 'heal' 
+          });
+        }
+      }
+    }
+    
+    // 普通攻击破盾1格（仅对敌人有效）
     if (!isEnemy && t.currentShield > 0 && !t.shieldBroken) {
       t.currentShield = Math.max(0, t.currentShield - 1);
       result.logs.push({ 
@@ -540,44 +988,66 @@ function executeDamageEffect(effect, user, atk, target, effectTarget, isEnemy, r
       }
     }
     
-    // 被攻击者获得能量
-    if (!t.isEnemy && t.currentHp > 0) {
+    // 召唤物攻击附带眩晕
+    if (user.isSummon && user.buffs && user.buffs.stunOnHit && !t.isEnemy === false) {
+      t.stunDuration = (t.stunDuration || 0) + 1;
+      result.logs.push({ text: `  → ${t.name} 被眩晕 1 回合！`, type: 'system' });
+    }
+    
+    // 被攻击者获得能量（仅我方干员，不含召唤物）
+    if (!t.isEnemy && !t.isSummon && t.currentHp > 0) {
       t.energy = Math.min(t.maxEnergy, t.energy + 20);
       result.energyChanges.push({ unit: t, amount: 20 });
     }
-    
-    // 检查死亡
-    if (t.currentHp <= 0) {
-      t.currentHp = 0;
-      result.deaths.push(t);
-      result.logs.push({ text: `💀 ${t.name} 被击败！`, type: 'system' });
-    }
   };
   
-  switch (effectTarget) {
-    case 'single':
-      if (target) applyDamage(target);
-      break;
-      
-    case 'all':
-    case 'all_enemy':
-      enemies.filter(e => e.currentHp > 0).forEach(applyDamage);
-      break;
-      
-    case 'random2':
-    case 'random3':
-      const times = effectTarget === 'random3' ? 3 : 2;
-      for (let i = 0; i < times; i++) {
-        const alive = enemies.filter(e => e.currentHp > 0);
-        if (alive.length === 0) break;
-        const t = alive[Math.floor(Math.random() * alive.length)];
-        applyDamage(t);
-      }
-      break;
+  // 连击处理：召唤物二连击 或 敌人multiStrike词缀
+  let attackCount = 1;
+  
+  // 召唤物二连击
+  if (user.isSummon && user.buffs && user.buffs.doubleAttack) {
+    attackCount = 2;
+  }
+  
+  // 敌人multiStrike词缀（仅普攻生效）
+  if (user.isEnemy && effect.multiplier === 1.0) {  // 普攻倍率1.0
+    const multiStrikeCount = getAffixMultiStrikeCount(user, '普攻');
+    if (multiStrikeCount > attackCount) {
+      attackCount = multiStrikeCount;
+    }
+  }
+  
+  for (let attackIndex = 0; attackIndex < attackCount; attackIndex++) {
+    if (attackCount > 1) {
+      result.logs.push({ text: `  [第${attackIndex + 1}次攻击]`, type: 'system' });
+    }
+    
+    switch (effectTarget) {
+      case 'single':
+        if (target && target.currentHp > 0) applyDamage(target);
+        break;
+        
+      case 'all':
+      case 'all_enemy':
+        enemies.filter(e => e.currentHp > 0).forEach(applyDamage);
+        break;
+        
+      case 'random2':
+      case 'random3':
+        const times = effectTarget === 'random3' ? 3 : 2;
+        for (let i = 0; i < times; i++) {
+          const alive = enemies.filter(e => e.currentHp > 0);
+          if (alive.length === 0) break;
+          const t = alive[Math.floor(Math.random() * alive.length)];
+          applyDamage(t);
+        }
+        break;
+    }
   }
 }
 
-// 护盾破坏效果
+// ==================== 护盾破坏效果 ====================
+
 function executeShieldBreakEffect(effect, target, effectTarget, isEnemy, result) {
   const enemies = isEnemy ? battle.allies : battle.enemies;
   
@@ -620,16 +1090,20 @@ function executeShieldBreakEffect(effect, target, effectTarget, isEnemy, result)
   }
 }
 
-// 治疗效果
+// ==================== 治疗效果 ====================
+
 function executeHealEffect(effect, user, atk, target, effectTarget, isEnemy, result) {
   const healAmt = Math.floor(atk * effect.multiplier);
-  const allies = isEnemy ? battle.enemies : battle.allies;
+  
+  // 我方单位包含召唤物
+  const allies = isEnemy ? battle.enemies : [...battle.allies, ...battle.summons];
   
   const applyHeal = (t) => {
     const oldHp = t.currentHp;
     t.currentHp = Math.min(t.maxHp, t.currentHp + healAmt);
     const actualHeal = t.currentHp - oldHp;
-    result.logs.push({ text: `  → ${t.name} 恢复 ${actualHeal} HP！`, type: 'heal' });
+    const unitPrefix = t.isSummon ? '🔮' : '';
+    result.logs.push({ text: `  → ${unitPrefix}${t.name} 恢复 ${actualHeal} HP！`, type: 'heal' });
   };
   
   switch (effectTarget) {
@@ -651,9 +1125,11 @@ function executeHealEffect(effect, user, atk, target, effectTarget, isEnemy, res
   }
 }
 
-// 增益效果
+// ==================== 增益效果 ====================
+
 function executeBuffEffect(effect, user, atk, effectTarget, isEnemy, result) {
-  const allies = isEnemy ? battle.enemies : battle.allies;
+  // 我方单位包含召唤物
+  const allies = isEnemy ? battle.enemies : [...battle.allies, ...battle.summons];
   
   let buffValue;
   if (effect.value) {
@@ -663,18 +1139,19 @@ function executeBuffEffect(effect, user, atk, effectTarget, isEnemy, result) {
   }
   
   const applyBuff = (t) => {
+    const unitPrefix = t.isSummon ? '🔮' : '';
     switch (effect.stat) {
       case 'atk':
         t.buffAtk = (t.buffAtk || 0) + buffValue;
-        result.logs.push({ text: `  → ${t.name} ATK +${buffValue}！`, type: 'system' });
+        result.logs.push({ text: `  → ${unitPrefix}${t.name} ATK +${buffValue}！`, type: 'system' });
         break;
       case 'spd':
         t.spd += buffValue;
-        result.logs.push({ text: `  → ${t.name} SPD +${buffValue}！`, type: 'system' });
+        result.logs.push({ text: `  → ${unitPrefix}${t.name} SPD +${buffValue}！`, type: 'system' });
         break;
       case 'def':
         t.def += buffValue;
-        result.logs.push({ text: `  → ${t.name} DEF +${buffValue}！`, type: 'system' });
+        result.logs.push({ text: `  → ${unitPrefix}${t.name} DEF +${buffValue}！`, type: 'system' });
         break;
     }
   };
@@ -689,9 +1166,10 @@ function executeBuffEffect(effect, user, atk, effectTarget, isEnemy, result) {
   }
 }
 
-// 减益效果
+// ==================== 减益效果 ====================
+
 function executeDebuffEffect(effect, user, atk, target, effectTarget, isEnemy, result) {
-  const enemies = isEnemy ? battle.allies : battle.enemies;
+  const enemies = isEnemy ? [...battle.allies, ...battle.summons] : battle.enemies;
   
   const applyDebuff = (t) => {
     let debuffValue;
@@ -727,10 +1205,93 @@ function executeDebuffEffect(effect, user, atk, target, effectTarget, isEnemy, r
   }
 }
 
-// 眩晕效果
+// ==================== 眩晕效果 ====================
+
 function executeStunEffect(effect, target, effectTarget, isEnemy, result) {
   if (target) {
     target.stunDuration = (target.stunDuration || 0) + (effect.duration || 1);
     result.logs.push({ text: `  → ${target.name} 被眩晕 ${effect.duration} 回合！`, type: 'system' });
   }
+}
+
+// ==================== 召唤系统相关效果 ====================
+
+/**
+ * 全队回复能量（先锋供能）
+ */
+function executeTeamEnergyEffect(effect, user, isEnemy, result) {
+  if (isEnemy) return;  // 敌人不使用此效果
+  
+  const amount = effect.amount || 0;
+  
+  battle.allies.filter(a => a.currentHp > 0).forEach(ally => {
+    // 不给自己回能量（已经通过技能消耗/获得处理）
+    if (ally === user) return;
+    
+    ally.energy = Math.min(ally.maxEnergy, ally.energy + amount);
+  });
+  
+  result.logs.push({ text: `  → 全队回复 ${amount} 能量！`, type: 'system' });
+}
+
+/**
+ * 给召唤物添加buff
+ */
+function executeSummonBuffEffect(effect, user, result) {
+  if (typeof SummonSystem === 'undefined') return;
+  
+  const buffType = effect.buffType;
+  const value = effect.value;
+  
+  SummonSystem.addBuffToSummons(user, buffType, value);
+  
+  // 日志
+  const summons = SummonSystem.getSummonsByOwner(user);
+  if (summons.length > 0) {
+    let buffText = '';
+    switch (buffType) {
+      case 'atkPercent':
+        buffText = `ATK +${value}%`;
+        break;
+      case 'spdFlat':
+        buffText = `SPD +${value}`;
+        break;
+      case 'healPerTurn':
+        buffText = `每回合回血 ${value}%`;
+        break;
+      case 'doubleAttack':
+        buffText = `获得二连击`;
+        break;
+      case 'stunOnHit':
+        buffText = `攻击附带眩晕`;
+        break;
+    }
+    result.logs.push({ text: `  → 🔮流形 ${buffText}！`, type: 'system' });
+  } else {
+    result.logs.push({ text: `  → （暂无召唤物，buff已记录）`, type: 'system' });
+  }
+}
+
+/**
+ * 给召唤者自己添加buff
+ */
+function executeOwnerBuffEffect(effect, user, result) {
+  if (typeof SummonSystem === 'undefined') return;
+  
+  const buffType = effect.buffType;
+  const value = effect.value;
+  
+  SummonSystem.addBuffToOwner(user, buffType, value);
+  
+  // 日志
+  let buffText = '';
+  switch (buffType) {
+    case 'atkPercent':
+      buffText = `ATK +${value}%`;
+      break;
+    case 'spdFlat':
+      buffText = `SPD +${value}`;
+      break;
+  }
+  result.logs.push({ text: `  → ${user.name} ${buffText}！`, type: 'system' });
 }

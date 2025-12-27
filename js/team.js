@@ -103,17 +103,18 @@ function renderCharacterList() {
     `;
     
     // 单击查看详情
-    // 左键编队
+    // 左键查看详情
     item.onclick = (e) => {
       e.stopPropagation();
-      assignToSlot(name);
+      showCharDetail(name);
     };
 
-    // 右键查看详情
+    // 右键编队
     item.oncontextmenu = (e) => {
       e.preventDefault(); // 阻止默认右键菜单
       e.stopPropagation();
-      showCharDetail(name);
+      assignToSlot(name);
+      
     };
     
     listDiv.appendChild(item);

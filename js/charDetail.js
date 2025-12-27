@@ -1,7 +1,11 @@
 // ==================== 干员详情系统 ====================
 
+// 当前查看的角色
+let currentDetailChar = null;
+
 // 显示干员详情
 function showCharDetail(charName) {
+  currentDetailChar = charName;
   const data = CHARACTER_DATA[charName];
   if (!data) return;
   
@@ -137,5 +141,155 @@ function toggleDetailSection(barElement) {
     section.classList.remove('expanded');
   } else {
     section.classList.add('expanded');
+  }
+}
+
+// 时装模式状态
+let skinModeActive = false;
+
+// 打开时装切换面板（进入时装模式）
+function openCharSkinPanel() {
+  if (!currentDetailChar) return;
+  
+  const data = CHARACTER_DATA[currentDetailChar];
+  if (!data || !data.id) return;
+  
+  enterSkinMode();
+}
+
+// 进入时装模式
+function enterSkinMode() {
+  skinModeActive = true;
+  const container = document.querySelector('.char-detail-container');
+  container.classList.add('skin-mode');
+  
+  // 渲染时装列表
+  renderSkinList();
+}
+
+// 退出时装模式
+function exitSkinMode() {
+  skinModeActive = false;
+  const container = document.querySelector('.char-detail-container');
+  const skinList = document.getElementById('skin-mode-list');
+  
+  // 先移除类名触发滑出动画
+  container.classList.remove('skin-mode');
+  
+  // 等待动画完成后再清空内容
+  setTimeout(() => {
+    skinList.innerHTML = '';
+  }, 350); // 等待滑出动画完成
+}
+
+// 渲染时装列表
+function renderSkinList() {
+  if (!currentDetailChar) return;
+  
+  const data = CHARACTER_DATA[currentDetailChar];
+  if (!data || !data.id) return;
+  
+  const charId = data.id;
+  const skins = SkinSystem.getCharSkins(charId);  // 已包含owned属性
+  const currentSkinId = SkinSystem.getEquippedSkin(charId);
+  
+  // 获取角色立绘路径
+  //const defaultArt = data.art || '';
+  const defaultSkinhead = `assets/skinhead/${charId}_skin0.png`|| '';
+  
+  let html = '';
+  
+  // 默认外观
+  const defaultEquipped = !currentSkinId;
+  html += `
+    <div class="skin-list-item ${defaultEquipped ? 'equipped' : 'owned'}" 
+         onclick="selectSkinFromList('${charId}', null)">
+      <div class="skin-item-thumb">
+        ${defaultSkinhead ? `<img src="assets/skinhead/${charId}/${charId}_skin0.png" alt="默认">` : '👤'}
+      </div>
+      <div class="skin-item-name">默认外观</div>
+    </div>
+  `;
+  
+  // 时装列表
+  skins.forEach(skin => {
+    const owned = skin.owned;
+    const equipped = skin.id === currentSkinId;
+    
+    let statusClass = 'locked';
+    if (equipped) {
+      statusClass = 'equipped';
+    } else if (owned) {
+      statusClass = 'owned';
+    }
+    
+    // 时装缩略图
+    const thumbSrc = skin.skinhead;
+    
+    html += `
+      <div class="skin-list-item ${statusClass}" 
+           onclick="${owned ? `selectSkinFromList('${charId}', '${skin.id}')` : ''}">
+           <div class="skincolor" style="background: rgb(102, 125, 67); width: 7px;"></div>
+        <div class="skin-item-thumb">
+          ${thumbSrc ? `<img src="${thumbSrc}" alt="${skin.name}" width="100%">` : '🎨'}
+        </div>
+        <div class="skin-item-name">${skin.name}</div>
+        ${!owned ? '<div class="skin-item-lock">🔒</div>' : ''}
+      </div>
+    `;
+  });
+  
+  document.getElementById('skin-mode-list').innerHTML = html;
+}
+
+// 从列表选择时装
+function selectSkinFromList(charId, skinId) {
+  if (skinId) {
+    // 检查是否拥有 - 使用getCharSkins获取
+    const skins = SkinSystem.getCharSkins(charId);
+    const targetSkin = skins.find(s => s.id === skinId);
+    if (!targetSkin || !targetSkin.owned) {
+      showModal('❌ 未拥有', '您还未获得此时装', true);
+      return;
+    }
+  }
+  
+  // 装备时装
+  SkinSystem.equipSkin(charId, skinId);
+  
+  // 刷新立绘显示
+  refreshCharDetailArt();
+  
+  // 重新渲染列表
+  renderSkinList();
+}
+
+// 刷新立绘显示（不退出时装模式）
+function refreshCharDetailArt() {
+  if (!currentDetailChar) return;
+  
+  const data = CHARACTER_DATA[currentDetailChar];
+  if (!data) return;
+  
+  // 获取当前装备的时装立绘
+  let artSrc = data.art;
+  if (data.id && typeof SkinSystem !== 'undefined') {
+    const skinArt = SkinSystem.getSkinArt(data.id);
+    if (skinArt) {
+      artSrc = skinArt;
+    }
+  }
+  
+  const artImg = document.getElementById('char-detail-art');
+  if (artSrc) {
+    artImg.src = artSrc;
+    artImg.style.display = 'block';
+  }
+}
+
+// 刷新干员详情（用于时装切换后）
+function refreshCharDetail() {
+  if (currentDetailChar) {
+    showCharDetail(currentDetailChar);
   }
 }

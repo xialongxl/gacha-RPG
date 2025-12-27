@@ -39,8 +39,8 @@ function createSpinePlayer(containerId, spineData) {
   if (container.children.length > 0) return true;
   
   // viewport参数
-  const vpWidth = 100;
-  const vpHeight = 350;
+  const vpWidth = 50;
+  const vpHeight = 400;
   
   try {
     const player = new spine.SpinePlayer(containerId, {
@@ -130,6 +130,12 @@ function updateResourceUI() {
   document.getElementById('tickets').textContent = state.tickets;
   document.getElementById('gold').textContent = state.gold;
   document.getElementById('pity').textContent = state.pity;
+  
+  // 无尽币和时装券
+  const endlessCoinEl = document.getElementById('endless-coin');
+  const skinTicketsEl = document.getElementById('skin-tickets');
+  if (endlessCoinEl) endlessCoinEl.textContent = state.endlessCoin || 0;
+  if (skinTicketsEl) skinTicketsEl.textContent = state.skinTickets || 0;
 }
 
 // 页面切换
@@ -190,9 +196,16 @@ function showGachaResult(results) {
 }
 
 // 显示模态框
-function showModal(title, content) {
+function showModal(title, content, showDefaultBtn = true) {
   document.getElementById('modal-title').textContent = title;
   document.getElementById('modal-rewards').innerHTML = content;
+  
+  // 控制默认按钮显示/隐藏
+  const defaultBtn = document.getElementById('btn-close-modal');
+  if (defaultBtn) {
+    defaultBtn.style.display = showDefaultBtn ? 'block' : 'none';
+  }
+  
   document.getElementById('result-modal').classList.add('active');
 }
 

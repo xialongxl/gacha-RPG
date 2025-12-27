@@ -3,7 +3,7 @@
 /**
  * 获取敌人决策
  * @param {Object} enemy - 敌人单位
- * @param {Array} aliveAllies - 存活的玩家单位
+ * @param {Array} aliveAllies - 存活的玩家单位（包含干员和召唤物）
  * @param {Array} aliveEnemies - 存活的敌人单位
  * @returns {Object} { skill, target, strategy }
  */
@@ -55,6 +55,11 @@ function chooseEnemySkill(enemy, aliveAllies, aliveEnemies) {
   const hpPercent = enemy.currentHp / enemy.maxHp;
   const injuredAllies = aliveEnemies.filter(e => e.currentHp / e.maxHp < 0.5);
   
+  // 统计目标数量（干员+召唤物）
+  const totalTargets = aliveAllies.length;
+  const summonCount = aliveAllies.filter(a => a.isSummon).length;
+  const operatorCount = totalTargets - summonCount;
+  
   // 优先治疗
   if (injuredAllies.length > 0) {
     if (skills.includes('群体治疗') && injuredAllies.length >= 2 && SKILL_EFFECTS['群体治疗']) {
@@ -75,8 +80,8 @@ function chooseEnemySkill(enemy, aliveAllies, aliveEnemies) {
     return { name: '鼓舞', ...SKILL_EFFECTS['鼓舞'] };
   }
   
-  // 多目标时群攻
-  if (aliveAllies.length >= 3) {
+  // 多目标时群攻（包含召唤物）
+  if (totalTargets >= 3) {
     if (skills.includes('烈焰风暴') && SKILL_EFFECTS['烈焰风暴']) {
       return { name: '烈焰风暴', ...SKILL_EFFECTS['烈焰风暴'] };
     }
@@ -99,23 +104,65 @@ function chooseEnemySkill(enemy, aliveAllies, aliveEnemies) {
 
 // 智能选择目标
 function chooseTarget(enemy, aliveAllies) {
-  const calcExpectedDmg = (t) => Math.max(1, Math.floor(enemy.atk - t.def * 0.5));
+  const calcExpectedDmg = (t) => {
+    const tDef = t.def || 0;
+    return Math.max(1, Math.floor(enemy.atk - tDef * 0.5));
+  };
   
   const scores = aliveAllies.map(target => {
     let score = 0;
     const expectedDmg = calcExpectedDmg(target);
+    const targetHp = target.currentHp;
+    const targetMaxHp = target.maxHp;
+    const hpPercent = targetHp / targetMaxHp;
+    
+    // ====== 召唤物特殊处理 ======
+    if (target.isSummon) {
+      // 能击杀召唤物优先（清理场面）
+      if (targetHp <= expectedDmg) score += 800;
+      // 残血召唤物
+      if (hpPercent < 0.3) score += 150;
+      // 召唤物基础优先级较低（除非能击杀）
+      score -= 50;
+      // 随机因子
+      score += Math.random() * 20;
+      
+      return { target, score };
+    }
+    
+    // ====== 干员处理 ======
     
     // 能击杀优先
-    if (target.currentHp <= expectedDmg) score += 1000;
+    if (targetHp <= expectedDmg) score += 1000;
     // 残血优先
-    if (target.currentHp / target.maxHp < 0.3) score += 200;
+    if (hpPercent < 0.3) score += 200;
+    
+    // 召唤师优先（杀死召唤师则召唤物消失）
+    if (target.isSummoner) {
+      score += 120;
+      // 如果场上有召唤物，更优先攻击召唤师
+      const hasSummons = aliveAllies.some(a => a.isSummon && a.ownerId === target.id);
+      if (hasSummons) score += 80;
+    }
+    
     // 治疗职业优先
-    if (target.skills && target.skills.some(s => s.includes('治疗') || s.includes('群疗'))) score += 150;
-    // 高能量优先
-    if (target.energy >= 70) score += 100;
+    if (target.skills && target.skills.some(s => s.includes('治疗') || s.includes('群疗'))) {
+      score += 150;
+    }
+    
+    // 高能量优先（能量快满的干员可能放大招）
+    const targetEnergy = target.energy || 0;
+    if (targetEnergy >= 70) score += 100;
+    
     // 高攻击优先
-    const maxAtk = Math.max(...aliveAllies.map(a => a.atk));
-    score += (target.atk / maxAtk) * 80;
+    const operators = aliveAllies.filter(a => !a.isSummon);
+    if (operators.length > 0) {
+      const maxAtk = Math.max(...operators.map(a => a.atk || 0));
+      if (maxAtk > 0) {
+        score += ((target.atk || 0) / maxAtk) * 80;
+      }
+    }
+    
     // 随机因子
     score += Math.random() * 30;
     
@@ -128,16 +175,42 @@ function chooseTarget(enemy, aliveAllies) {
 
 // 获取AI策略描述
 function getStrategy(enemy, target, aliveAllies) {
-  const calcExpectedDmg = (t) => Math.max(1, Math.floor(enemy.atk - t.def * 0.5));
+  // 召唤物特殊描述
+  if (target.isSummon) {
+    const calcExpectedDmg = (t) => Math.max(1, Math.floor(enemy.atk - (t.def || 0) * 0.5));
+    const expectedDmg = calcExpectedDmg(target);
+    
+    if (target.currentHp <= expectedDmg) return '清除召唤物';
+    if (target.currentHp / target.maxHp < 0.3) return '消灭残血召唤物';
+    return '攻击召唤物';
+  }
+  
+  // 干员策略描述
+  const calcExpectedDmg = (t) => Math.max(1, Math.floor(enemy.atk - (t.def || 0) * 0.5));
   const expectedDmg = calcExpectedDmg(target);
   
   if (target.currentHp <= expectedDmg) return '补刀';
   if (target.currentHp / target.maxHp < 0.3) return '集火残血';
-  if (target.skills && target.skills.some(s => s.includes('治疗') || s.includes('群疗'))) return '针对治疗';
-  if (target.energy >= 70) return '阻断大招';
   
-  const maxAtk = Math.max(...aliveAllies.map(a => a.atk));
-  if (target.atk >= maxAtk * 0.9) return '压制输出';
+  // 召唤师特殊策略
+  if (target.isSummoner) {
+    const hasSummons = aliveAllies.some(a => a.isSummon && a.ownerId === target.id);
+    if (hasSummons) return '斩首召唤师';
+    return '攻击召唤师';
+  }
+  
+  if (target.skills && target.skills.some(s => s.includes('治疗') || s.includes('群疗'))) {
+    return '针对治疗';
+  }
+  
+  const targetEnergy = target.energy || 0;
+  if (targetEnergy >= 70) return '阻断大招';
+  
+  const operators = aliveAllies.filter(a => !a.isSummon);
+  if (operators.length > 0) {
+    const maxAtk = Math.max(...operators.map(a => a.atk || 0));
+    if (maxAtk > 0 && (target.atk || 0) >= maxAtk * 0.9) return '压制输出';
+  }
   
   return '择优攻击';
 }

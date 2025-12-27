@@ -19,8 +19,227 @@ const CONFIG = {
     3: 20
   },
 
-    // 潜能加成（每级+3%）
-  POTENTIAL_BONUS_PER_LEVEL: 0.05
+  // 潜能加成（每级+5%）
+  POTENTIAL_BONUS_PER_LEVEL: 0.05,
+
+  // ==================== 召唤系统配置 ====================
+  SUMMON: {
+    MAX_SLOTS: 4,              // 召唤位总数（全队共享）
+    FIRST_SUMMON_COUNT: 1,     // 首次行动召唤数量
+    REFRESH_INTERVAL: 3,       // 召唤师行动X次后召唤下一只
+    INHERIT_RATIO: 1.0,        // 属性继承比例（100%）
+    OWNER_DEATH_REMOVE: true,  // 召唤者死亡时召唤物是否消失
+    INSTANT_REFRESH_ON_DEATH: true  // 召唤物死亡后召唤师立即补充
+  },
+
+  // ==================== 词缀系统配置 ====================
+  AFFIX: {
+    // 词缀类型定义
+    TYPES: {
+      // === 普通词缀 (common) ===
+      thorns: { 
+        name: '反伤', 
+        icon: '🦔',
+        desc: '受到攻击时反弹{value}%伤害',
+        value: 15,           // 反弹15%伤害
+        rarity: 'common' 
+      },
+      regen: { 
+        name: '回血', 
+        icon: '💚',
+        desc: '每回合恢复{value}%最大生命',
+        value: 5,            // 每回合恢复5%HP
+        rarity: 'common' 
+      },
+      berserk: { 
+        name: '狂化', 
+        icon: '😤',
+        desc: 'HP低于{threshold}%时攻击力+{value}%',
+        value: 50,           // 攻击力+50%
+        threshold: 30,       // HP低于30%触发
+        rarity: 'common' 
+      },
+      swift: { 
+        name: '迅捷', 
+        icon: '💨',
+        desc: '速度+{value}',
+        value: 15,           // 速度+15
+        rarity: 'common' 
+      },
+      fortify: { 
+        name: '坚韧', 
+        icon: '🛡️',
+        desc: '防御力+{value}%',
+        value: 25,           // 防御力+25%
+        rarity: 'common' 
+      },
+
+      // === 稀有词缀 (rare) ===
+      multiStrike: { 
+        name: '连击', 
+        icon: '⚔️',
+        desc: '普攻时有{value}%概率攻击两次',
+        value: 30,           // 30%概率连击
+        rarity: 'rare' 
+      },
+      taunt: { 
+        name: '嘲讽', 
+        icon: '😠',
+        desc: '强制敌人优先攻击自己',
+        rarity: 'rare' 
+      },
+      shield: { 
+        name: '护盾', 
+        icon: '🔰',
+        desc: '首次受击伤害减少{value}%（一次性）',
+        value: 50,           // 首次受击伤害减少50%
+        consumable: true,    // 一次性效果
+        rarity: 'rare' 
+      },
+      dodge: { 
+        name: '闪避', 
+        icon: '💫',
+        desc: '{value}%概率闪避攻击',
+        value: 20,           // 20%闪避率
+        rarity: 'rare' 
+      },
+      vampiric: { 
+        name: '吸血', 
+        icon: '🩸',
+        desc: '造成伤害时恢复{value}%',
+        value: 15,           // 15%吸血
+        rarity: 'rare' 
+      },
+
+      // === 传说词缀 (legendary) ===
+      split: { 
+        name: '分裂', 
+        icon: '👥',
+        desc: '死亡时分裂为{value}个小型单位',
+        value: 2,            // 分裂成2个
+        rarity: 'legendary' 
+      },
+      explosion: { 
+        name: '爆炸', 
+        icon: '💥',
+        desc: '死亡时对所有敌人造成{value}%最大HP伤害',
+        value: 30,           // 30%最大HP伤害
+        rarity: 'legendary' 
+      },
+      undying: { 
+        name: '不死', 
+        icon: '💀',
+        desc: '首次致死伤害时恢复{value}%HP',
+        value: 30,           // 恢复30%HP
+        rarity: 'legendary' 
+      },
+      aura: { 
+        name: '强化光环', 
+        icon: '✨',
+        desc: '队友攻击力+{value}%',
+        value: 15,           // 队友攻击力+15%
+        rarity: 'legendary' 
+      }
+    },
+
+    // 词缀稀有度权重
+    RARITY_WEIGHTS: {
+      common: 60,      // 60%
+      rare: 30,        // 30%
+      legendary: 10    // 10%
+    },
+
+    // 层数对应词缀数量 [起始层, 词缀数]
+    FLOOR_AFFIX_COUNT: [
+      [1, 0],      // 1-9层：无词缀
+      [10, 1],     // 10-19层：1个词缀
+      [20, 2],     // 20-29层：2个词缀
+      [30, 3],     // 30-39层：3个词缀
+      [40, 4],     // 40-49层：4个词缀
+      [50, 5]      // 50+层：5个词缀
+    ],
+
+    // 精英/BOSS额外词缀
+    ELITE: {
+      interval: 5,       // 每5层刷新精英池
+      extraAffixes: 1,   // 精英额外+1词缀
+      guaranteedRare: true  // 精英保底1个稀有+词缀
+    },
+    BOSS: {
+      interval: 10,      // 每10层BOSS
+      extraAffixes: 2,   // BOSS额外+2词缀
+      guaranteedLegendary: true  // BOSS保底1个传说词缀
+    }
+  },
+
+  // ==================== 战斗规则配置 ====================
+  BATTLE_RULES: {
+    // 禁疗：治疗效果减少
+    noHeal: {
+      name: '禁疗',
+      icon: '🚫',
+      desc: '治疗效果降低{value}%',
+      floors: [15, 25, 35, 45],  // 生效层数
+      value: 50                   // 治疗效果-50%
+    },
+    // 先手：敌人优先行动
+    enemyFirst: {
+      name: '先手',
+      icon: '⚡',
+      desc: '敌人速度+{value}',
+      floors: [20, 30, 40, 50],
+      value: 20
+    },
+    // 削弱：玩家属性降低
+    debuff: {
+      name: '削弱',
+      icon: '📉',
+      desc: '我方攻击力-{value}%',
+      floors: [25, 45],
+      value: 15
+    },
+    // 限时：回合数限制
+    turnLimit: {
+      name: '限时',
+      icon: '⏱️',
+      desc: '{value}回合内未结束视为失败',
+      floors: [30, 50],
+      value: 20
+    }
+  },
+
+  // ==================== 无尽币配置 ====================
+  ENDLESS_COIN: {
+    BASE_RATE: 2,           // 每层获得2无尽币
+    BOSS_BONUS: 10,         // 击败BOSS额外+10
+    // 兑换比例
+    EXCHANGE: {
+      COIN_TO_TICKET: 100   // 100无尽币 = 1时装券
+    }
+  },
+
+  // ==================== Roguelike强化配置 ====================
+  ROGUELIKE: {
+    // 强化选项（每5层可选）
+    UPGRADES: {
+      atkUp: { name: '攻击强化', icon: '⚔️', desc: '全队攻击+15%', type: 'stat', stat: 'atk', value: 0.15 },
+      defUp: { name: '防御强化', icon: '🛡️', desc: '全队防御+15%', type: 'stat', stat: 'def', value: 0.15 },
+      hpUp: { name: '生命强化', icon: '❤️', desc: '全队生命+20%', type: 'stat', stat: 'hp', value: 0.20 },
+      spdUp: { name: '速度强化', icon: '💨', desc: '全队速度+10', type: 'stat', stat: 'spd', value: 10 },
+      critUp: { name: '暴击强化', icon: '🎯', desc: '暴击率+15%', type: 'special', effect: 'crit', value: 0.15 },
+      vampUp: { name: '吸血强化', icon: '🩸', desc: '全队+10%吸血', type: 'special', effect: 'vamp', value: 0.10 },
+      heal: { name: '紧急治疗', icon: '💚', desc: '全队恢复50%HP', type: 'instant', effect: 'heal', value: 0.50 },
+      revive: { name: '复活', icon: '✨', desc: '复活1个已死亡队友', type: 'instant', effect: 'revive' },
+      energyUp: { name: '能量强化', icon: '⚡', desc: '全队能量+50', type: 'instant', effect: 'energy', value: 50 },
+      shieldAll: { name: '护盾', icon: '🔰', desc: '全队获得20%HP护盾', type: 'instant', effect: 'shield', value: 0.20 },
+      extraLife: { name: '额外生命', icon: '💖', desc: '1次免死金牌', type: 'special', effect: 'extraLife' },
+      doubleReward: { name: '双倍奖励', icon: '💰', desc: '本次挑战奖励x2', type: 'special', effect: 'doubleReward' }
+    },
+    // 每次提供的选项数量
+    OPTIONS_COUNT: 3,
+    // 强化间隔层数
+    UPGRADE_INTERVAL: 5
+  }
 };
 
 // 计算潜能加成后的属性
