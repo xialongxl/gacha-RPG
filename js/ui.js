@@ -1,34 +1,17 @@
 // ==================== UI通用函数 ====================
 
-// Spine播放器实例管理
+// Spine播放器实例管理（存储Pixi App和Spine对象）
 const spineInstances = new Map();
 
-// 全局删除Spine水印和控制栏
-function removeAllSpineUI() {
-  const selectors = [
-    '.spine-player-controls',
-    '.spine-player-buttons',
-    '.spine-player-timeline',
-    '.spine-player-popup',
-    '#spine-player-button-logo',
-    '.spine-player-button-icon-spine-logo',
-    '[id*="spine-player-button"]'
-  ];
-  
-  selectors.forEach(sel => {
-    document.querySelectorAll(sel).forEach(el => el.remove());
-  });
-}
-
-// 创建Spine播放器
+// 创建Spine播放器（使用Pixi渲染）
 function createSpinePlayer(containerId, spineData) {
   if (!spineData || !spineData.skel || !spineData.atlas) {
     console.warn('Spine数据不完整');
     return false;
   }
   
-  if (typeof spine === 'undefined') {
-    console.warn('Spine库未加载');
+  if (typeof PIXI === 'undefined') {
+    console.warn('Pixi库未加载');
     return false;
   }
   
@@ -38,38 +21,113 @@ function createSpinePlayer(containerId, spineData) {
   // 已经有内容了，跳过
   if (container.children.length > 0) return true;
   
-  // viewport参数
-  const vpWidth = 50;
-  const vpHeight = 400;
+  // 获取容器尺寸
+  const containerWidth = container.offsetWidth || 125;
+  const containerHeight = container.offsetHeight || 160;
   
   try {
-    const player = new spine.SpinePlayer(containerId, {
-      skelUrl: spineData.skel,
-      atlasUrl: spineData.atlas,
-      animation: spineData.animation || 'Idle',
-      premultipliedAlpha: true,
-      backgroundColor: '#00000000',
-      alpha: true,
-      showControls: false,
-      viewport: {
-        x: -vpWidth / 2,
-        y: 0,
-        width: vpWidth,
-        height: vpHeight
-      },
-      success: function(player) {
-        console.log('Spine加载成功:', containerId);
-        removeAllSpineUI();
-      },
-      error: function(player, msg) {
-        console.error('Spine加载失败:', msg);
+    // 创建Pixi应用 - 使用2倍分辨率渲染更清晰
+    const app = new PIXI.Application({
+      width: containerWidth,
+      height: containerHeight,
+      backgroundAlpha: 0,
+      resolution: 2,
+      autoDensity: true,
+      antialias: true
+    });
+    
+    // 设置canvas样式
+    app.view.style.width = containerWidth + 'px';
+    app.view.style.height = containerHeight + 'px';
+    container.appendChild(app.view);
+    
+    // 使用 PIXI.Loader 加载Spine资源 (PixiJS 6.x)
+    const loader = new PIXI.Loader();
+    const assetName = containerId + '_spine';
+    
+    loader.add(assetName, spineData.skel);
+    
+    loader.load((loader, resources) => {
+      try {
+        const spineResource = resources[assetName];
+        if (!spineResource || !spineResource.spineData) {
+          console.error('Spine资源加载失败:', containerId, spineResource);
+          showPlaceholder(containerId);
+          return;
+        }
+        
+        // 创建Spine动画对象
+        const spineAnim = new PIXI.spine.Spine(spineResource.spineData);
+        
+        // 尝试播放动画
+        const targetAnim = spineData.animation || 'Idle';
+        const animations = spineAnim.spineData.animations;
+        let animToPlay = null;
+        
+        // 查找目标动画
+        for (let i = 0; i < animations.length; i++) {
+          if (animations[i].name === targetAnim) {
+            animToPlay = targetAnim;
+            break;
+          }
+        }
+        
+        // 如果没找到，用第一个动画
+        if (!animToPlay && animations.length > 0) {
+          animToPlay = animations[0].name;
+        }
+        
+        if (animToPlay) {
+          spineAnim.state.setAnimation(0, animToPlay, true);
+        }
+        
+        // 计算缩放比例使spine适应容器
+        const bounds = spineAnim.getLocalBounds();
+        const spineWidth = bounds.width;
+        const spineHeight = bounds.height;
+        
+        // 计算适合容器的缩放比例（留15%边距）
+        const scaleX = (containerWidth * 0.85) / spineWidth;
+        const scaleY = (containerHeight * 0.85) / spineHeight;
+        const scale = Math.min(scaleX, scaleY);
+        
+        spineAnim.scale.set(scale);
+        
+        // 计算spine边界的中心点（考虑bounds的偏移）
+        const boundsCenter = {
+          x: (bounds.x + bounds.width / 2) * scale,
+          y: (bounds.y + bounds.height / 2) * scale
+        };
+        
+        // 将spine放置在容器中心，补偿边界偏移
+        spineAnim.x = containerWidth / 2 - boundsCenter.x;
+        spineAnim.y = containerHeight / 2 - boundsCenter.y;
+        
+        // 添加到舞台
+        app.stage.addChild(spineAnim);
+        
+        // 保存实例
+        spineInstances.set(containerId, { app, spine: spineAnim });
+        
+        console.log('Pixi Spine加载成功:', containerId, {
+          animation: animToPlay,
+          scale: scale.toFixed(3),
+          bounds: { w: spineWidth.toFixed(0), h: spineHeight.toFixed(0) }
+        });
+        
+      } catch (e) {
+        console.error('Spine创建失败:', containerId, e);
         showPlaceholder(containerId);
       }
     });
     
-    spineInstances.set(containerId, player);
+    loader.onError.add((error) => {
+      console.error('Spine资源加载错误:', containerId, error);
+      showPlaceholder(containerId);
+    });
+    
   } catch (e) {
-    console.error('Spine初始化失败:', e);
+    console.error('Pixi初始化失败:', e);
     showPlaceholder(containerId);
   }
   
@@ -99,6 +157,12 @@ function createSpineMedia(charData, charName, className, width, height) {
       if (container && container.children.length === 0) {
         // 清理旧实例（如果有）
         if (spineInstances.has(containerId)) {
+          const oldInstance = spineInstances.get(containerId);
+          if (oldInstance && oldInstance.app) {
+            try {
+              oldInstance.app.destroy(true);
+            } catch (e) {}
+          }
           spineInstances.delete(containerId);
         }
         createSpinePlayer(containerId, charData.spine);
@@ -121,6 +185,22 @@ function clearSpineInstances(prefix) {
     }
   });
   toDelete.forEach(id => {
+    const instance = spineInstances.get(id);
+    if (instance) {
+      try {
+        // 销毁Pixi应用
+        if (instance.app && typeof instance.app.destroy === 'function') {
+          instance.app.destroy(true);
+        }
+      } catch (e) {
+        console.warn('销毁Pixi实例失败:', id, e);
+      }
+    }
+    // 清空DOM容器
+    const container = document.getElementById(id);
+    if (container) {
+      container.innerHTML = '';
+    }
     spineInstances.delete(id);
   });
 }

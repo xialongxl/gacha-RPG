@@ -3,6 +3,11 @@
 // 记录上次渲染的队伍状态
 let lastRenderedTeam = null;
 
+// 清除队伍渲染缓存（供外部调用）
+function clearTeamRenderCache() {
+  lastRenderedTeam = null;
+}
+
 // 更新队伍UI
 function updateTeamUI() {
   renderTeamSlots();
@@ -31,7 +36,13 @@ function renderTeamSlots() {
       const data = CHARACTER_DATA[charName];
       const potential = state.inventory[charName]?.potential || 1;
       const stars = '★'.repeat(data.rarity);
-      const mediaHtml = createSpineMedia(data, charName, 'slot-spine', 125, 160);
+      
+      // 获取时装spine（如果有）
+      const spineData = data.id && typeof SkinSystem !== 'undefined' 
+        ? SkinSystem.getCurrentSpine(data.id, data.spine) 
+        : data.spine;
+      const renderData = { ...data, spine: spineData };
+      const mediaHtml = createSpineMedia(renderData, charName, 'slot-spine', 125, 160);
       
       const hasLeaderSkill = typeof LEADER_BONUS !== 'undefined' && LEADER_BONUS[charName];
       const leaderBadge = isLeader ? '<div class="leader-badge">👑队长</div>' : '';

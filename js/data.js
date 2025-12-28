@@ -15,7 +15,7 @@ function processCharacterData(data) {
         animation: 'Idle'
       } : null),
       // 自动生成立绘路径
-      art: char.art || (id ? `assets/art/${id}/${id}.png` : null),
+      art: char.art || (id ? `assets/art/${id}/${id}_skin0.png` : null),
       // 自动生成语音路径
       voice: char.voice || (id ? `assets/voice/${id}.wav` : null)
     };

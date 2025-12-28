@@ -3,15 +3,65 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>不看聊天记录的小马</title>
+  <title>今日圆舟</title>
   <link rel="stylesheet" href="css/style.css">
   <script src="lib/spine-webgl.js"></script>
   <script src="lib/spine-player.js"></script>
+  <!-- 先引入PixiJS -->
+  <script src="lib/pixi.min.js"></script>
+  <!-- 再引入pixi-spine (支持3.7/3.8/4.1) -->
+  <script src="lib/pixi-spine.umd.js"></script>
   <link rel="icon" href="assets/img/ak.png" type="image/png">
 
 </head>
 <body>
   <div class="container">
+    <!-- BGM播放器 -->
+    <div id="bgm-player" class="bgm-player">
+      <div class="bgm-player-toggle" onclick="toggleBGMPlayer()">
+        <span id="bgm-icon"><img src="assets/img/musicOn.png" width="100%"></span>
+      </div>
+      <div class="bgm-player-panel" id="bgm-panel">
+        <div class="bgm-now-playing">
+          <span class="bgm-label">正在播放</span>
+          <span id="bgm-current-name">--</span>
+        </div>
+        <div class="bgm-progress">
+          <span class="bgm-time" id="bgm-time-current">0:00</span>
+          <div class="bgm-progress-bar" id="bgm-progress-bar" onclick="BGMPlayer.seek(event)">
+            <div class="bgm-progress-fill" id="bgm-progress-fill"></div>
+            <div class="bgm-progress-handle" id="bgm-progress-handle"></div>
+          </div>
+          <span class="bgm-time" id="bgm-time-total">0:00</span>
+        </div>
+        <div class="bgm-controls">
+          <button class="bgm-btn" onclick="BGMPlayer.prev()" title="上一首">⏮️</button>
+          <button class="bgm-btn bgm-btn-main" id="bgm-play-btn" onclick="BGMPlayer.togglePlay()" title="播放/暂停">▶️</button>
+          <button class="bgm-btn" onclick="BGMPlayer.next()" title="下一首">⏭️</button>
+        </div>
+        <div class="bgm-mode">
+          <button class="bgm-mode-btn" id="bgm-mode-btn" onclick="BGMPlayer.toggleMode()" title="播放模式">🔁</button>
+          <span id="bgm-mode-text">列表循环</span>
+        </div>
+        <div class="bgm-volume">
+          <span id="bgm-volume-icon" onclick="BGMPlayer.toggleMute()" style="cursor:pointer" title="点击静音/取消静音">🔊</span>
+          <input type="range" id="bgm-volume-slider" min="0" max="100" value="50" oninput="BGMPlayer.setVolume(this.value)">
+        </div>
+        <div class="bgm-playlist">
+          <div class="bgm-playlist-header">
+            <span id="bgm-playlist-name" class="bgm-playlist-name">🏠 主界面</span>
+          </div>
+          <div id="bgm-playlist-tabs" class="bgm-playlist-tabs">
+            <button class="bgm-playlist-tab active" data-playlist="main" onclick="BGMPlayer.switchPlaylist('main'); BGMPlayer.play(0);">🏠 主界面</button>
+            <button class="bgm-playlist-tab" data-playlist="battle" onclick="BGMPlayer.switchPlaylist('battle'); BGMPlayer.play(0);">⚔️ 战斗</button>
+            <button class="bgm-playlist-tab" data-playlist="endless" onclick="BGMPlayer.switchPlaylist('endless'); BGMPlayer.play(0);">🏰 无尽</button>
+          </div>
+          <div class="bgm-playlist-title">曲目列表</div>
+          <div id="bgm-playlist-items" class="bgm-playlist-items"></div>
+        </div>
+      </div>
+    </div>
+    
     <!-- 资源栏 -->
     <div class="resources">
       <span>💎 抽卡券: <b id="tickets">50</b></span>
@@ -78,7 +128,10 @@
         <div class="char-detail-bg">
           <img id="char-detail-bg-img" class="char-detail-bg-img" src="" alt="">
         </div>
-        <img id="char-detail-art" class="char-detail-art" src="" alt="">
+        <!-- 立绘包裹容器（负责偏移） -->
+        <div id="char-detail-art-wrapper" class="char-detail-art-wrapper">
+          <img id="char-detail-art" class="char-detail-art" src="" alt="">
+        </div>
         
         <!-- 时装模式：左上角返回按钮 -->
         <div id="skin-mode-back" class="skin-mode-back" onclick="exitSkinMode()">
@@ -281,12 +334,16 @@
 <!-- Dexie.js 数据库（SmartAI需要） -->
 <script src="lib/dexie.js"></script>
 
+<!-- Howler.js 音频库 -->
+<script src="lib/howler.js"></script>
+
 <!-- 按顺序加载JS模块 -->
 <script src="js/config.js"></script>
 <script src="js/data.js"></script>
 <script src="js/skin.js"></script>
 <script src="js/shop.js"></script>
 <script src="js/state.js"></script>
+<script src="js/audio.js"></script>
 <script src="js/summon.js"></script>
 <script src="js/endless_and_smartAI/smartAI.js"></script>
 <script src="js/endless_and_smartAI/smartAI_battle.js"></script>

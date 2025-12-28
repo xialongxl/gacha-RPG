@@ -117,6 +117,9 @@ function startBattle(stage) {
   document.getElementById('stage-panel').style.display = 'none';
   document.getElementById('battle-field').classList.add('active');
   
+  // 切换战斗BGM
+  AudioManager.playBGM('battle');
+  
   addBattleLog('⚔️ 战斗开始！', 'system');
   calculateTurnOrder();
   battle.currentTurn = 0;
@@ -495,8 +498,15 @@ function renderBattleSideInitial(containerId, units, title, isEnemy) {
     const charData = CHARACTER_DATA[unit.name];
     let avatarHtml;
     
-    if (!isEnemy && charData && charData.spine && charData.spine.skel && charData.spine.atlas) {
-      avatarHtml = createSpineMedia(charData, unit.name, 'unit-spine', 100, 120);
+    // 获取时装spine（如果有）
+    let spineData = charData?.spine;
+    if (!isEnemy && charData && charData.id && typeof SkinSystem !== 'undefined') {
+      spineData = SkinSystem.getCurrentSpine(charData.id, charData.spine);
+    }
+    const renderData = charData ? { ...charData, spine: spineData } : null;
+    
+    if (!isEnemy && renderData && spineData && spineData.skel && spineData.atlas) {
+      avatarHtml = createSpineMedia(renderData, unit.name, 'unit-spine', 100, 120);
       renderedSpineUnits.add(unit.unitId);
     } else {
       const emoji = isEnemy ? '👹' : '👤';
@@ -1032,6 +1042,9 @@ function endBattle(victory) {
   battle.active = false;
   renderedSpineUnits.clear();
 
+  // 切换回主界面BGM
+  AudioManager.playBGM('main');
+
   // ====== 新增：无尽模式处理 ======
   if (battle.isEndless && typeof EndlessMode !== 'undefined') {
     if (victory) {
@@ -1072,6 +1085,9 @@ function endBattle(victory) {
 function fleeBattle() {
   battle.active = false;
   renderedSpineUnits.clear();
+  
+  // 切换回主界面BGM
+  AudioManager.playBGM('main');
   
   // 清理召唤系统
   if (typeof SummonSystem !== 'undefined') {

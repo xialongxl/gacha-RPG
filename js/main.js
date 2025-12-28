@@ -41,6 +41,9 @@ async function init() {
     // 绑定其他事件
     bindOtherEvents();
     
+    // 播放主界面BGM
+    AudioManager.playBGM('main');
+    
     console.log('✅ 游戏初始化完成！');
   } catch (error) {
     console.error('❌ 游戏初始化失败:', error);

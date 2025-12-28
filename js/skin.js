@@ -25,6 +25,8 @@ const SKIN_DATA = {
     name: '弃土花开',
     price: 20,
     skinhead: "assets/skinhead/char_358_lisa/char_358_lisa_skin1.png",
+    art: "assets/art/char_358_lisa/char_358_lisa_skin1.png",
+    artOffset: { x: 0, y: -282, z: 0 },  // 立绘位置偏移
     spine: null
   },
   'lisa_skin_2': {
@@ -32,6 +34,8 @@ const SKIN_DATA = {
     name: '春之颂',
     price: 20,
     skinhead: "assets/skinhead/char_358_lisa/char_358_lisa_skin2.png",
+    art: "assets/art/char_358_lisa/char_358_lisa_skin2.png",
+    artOffset: { x: 0, y: -300, z: 0 },
     spine: null
   },
   'lisa_skin_3': {
@@ -39,7 +43,13 @@ const SKIN_DATA = {
     name: '雪霁',
     price: 20,
     skinhead: "assets/skinhead/char_358_lisa/char_358_lisa_skin3.png",
-    spine: null
+    art: "assets/art/char_358_lisa/char_358_lisa_skin3.png",
+    artOffset: { x: 0, y: -299, z: 0 },
+    spine: {
+      skel: "spine/char_358_lisa/char_358_lisa_skin3/char_358_lisa_epoque_22.skel",
+      atlas: "spine/char_358_lisa/char_358_lisa_skin3/char_358_lisa_epoque_22.atlas",
+      animation: 'Idle'
+    }
   }
 };
 
@@ -156,152 +166,22 @@ const SkinSystem = {
     return null;  // 时装没有立绘资源，使用默认
   },
   
-  // ==================== 兑换系统 ====================
-  
-  // 无尽币兑换时装券
-  exchangeCoinToTicket(amount) {
-    const rate = CONFIG.ENDLESS_COIN?.EXCHANGE?.COIN_TO_TICKET || 100;
-    const coinNeeded = amount * rate;
-    
-    if ((state.endlessCoin || 0) < coinNeeded) {
-      return { 
-        success: false, 
-        message: `无尽币不足（需要${coinNeeded}，当前${state.endlessCoin || 0}）` 
-      };
+  // 获取角色当前使用的立绘偏移（含时装）
+  getSkinArtOffset(charId) {
+    const equippedSkinId = this.getEquippedSkin(charId);
+    if (!equippedSkinId) {
+      return null;  // 使用默认偏移（0,0,0）
     }
     
-    state.endlessCoin -= coinNeeded;
-    state.skinTickets = (state.skinTickets || 0) + amount;
-    saveState();
-    
-    return { 
-      success: true, 
-      message: `成功兑换${amount}张时装券` 
-    };
-  },
-  
-  // ==================== UI ====================
-  
-  // 显示时装商店
-  showShop() {
-    const allSkins = Object.entries(SKIN_DATA).map(([id, data]) => ({
-      id,
-      ...data,
-      owned: state.ownedSkins?.includes(id) || false
-    }));
-    
-    // 按角色分组
-    const groupedByChar = {};
-    allSkins.forEach(skin => {
-      if (!groupedByChar[skin.charId]) {
-        groupedByChar[skin.charId] = [];
-      }
-      groupedByChar[skin.charId].push(skin);
-    });
-    
-    let html = `
-      <div class="skin-shop">
-        <div class="skin-shop-header">
-          <div class="skin-currency">
-            <span>🎖️ 无尽币: <b>${state.endlessCoin || 0}</b></span>
-            <span>🎫 时装券: <b>${state.skinTickets || 0}</b></span>
-            <button class="btn-exchange-ticket" onclick="SkinSystem.showExchangeDialog()">兑换时装券</button>
-          </div>
-        </div>
-        <div class="skin-shop-list">
-    `;
-    
-    for (const [charId, skins] of Object.entries(groupedByChar)) {
-      // 获取角色名
-      const charData = Object.values(CHARACTER_DATA).find(c => c.id === charId);
-      const charName = charData?.name || charId;
-      
-      html += `<div class="skin-char-group">`;
-      html += `<h3>${charName}</h3>`;
-      html += `<div class="skin-list">`;
-      
-      skins.forEach(skin => {
-        const statusClass = skin.owned ? 'owned' : 'not-owned';
-        const btnText = skin.owned ? '已拥有' : `购买 (${skin.price}券)`;
-        const btnDisabled = skin.owned || (state.skinTickets || 0) < skin.price;
-        
-        html += `
-          <div class="skin-card ${statusClass}">
-            <div class="skin-preview">🎨</div>
-            <div class="skin-info">
-              <div class="skin-name">${skin.name}</div>
-              <div class="skin-price">${skin.price} 时装券</div>
-            </div>
-            <button class="skin-buy-btn" 
-                    ${btnDisabled ? 'disabled' : ''} 
-                    onclick="SkinSystem.handleBuy('${skin.id}')">
-              ${btnText}
-            </button>
-          </div>
-        `;
-      });
-      
-      html += `</div></div>`;
+    const skin = SKIN_DATA[equippedSkinId];
+    if (skin && skin.artOffset) {
+      return skin.artOffset;  // 使用时装偏移
     }
     
-    html += `</div></div>`;
-    
-    showModal('🎨 时装商店', html, false);
+    return null;  // 时装没有偏移配置，使用默认
   },
   
-  // 显示兑换对话框
-  showExchangeDialog() {
-    const rate = CONFIG.ENDLESS_COIN?.EXCHANGE?.COIN_TO_TICKET || 100;
-    const maxAmount = Math.floor((state.endlessCoin || 0) / rate);
-    
-    const html = `
-      <div class="exchange-dialog">
-        <p>兑换比例: ${rate} 无尽币 = 1 时装券</p>
-        <p>当前无尽币: ${state.endlessCoin || 0}</p>
-        <p>最多可兑换: ${maxAmount} 张</p>
-        <div class="exchange-input">
-          <label>兑换数量:</label>
-          <input type="number" id="exchange-amount" min="1" max="${maxAmount}" value="1">
-        </div>
-        <div class="exchange-buttons">
-          <button onclick="SkinSystem.doExchange()">确认兑换</button>
-          <button onclick="closeModal()">取消</button>
-        </div>
-      </div>
-    `;
-    
-    showModal('🔄 兑换时装券', html, false);
-  },
-  
-  // 执行兑换
-  doExchange() {
-    const input = document.getElementById('exchange-amount');
-    const amount = parseInt(input?.value) || 0;
-    
-    if (amount <= 0) {
-      alert('请输入有效数量');
-      return;
-    }
-    
-    const result = this.exchangeCoinToTicket(amount);
-    alert(result.message);
-    
-    if (result.success) {
-      closeModal();
-      updateResourceUI();
-    }
-  },
-  
-  // 处理购买
-  handleBuy(skinId) {
-    const result = this.buySkin(skinId);
-    alert(result.message);
-    
-    if (result.success) {
-      this.showShop();  // 刷新商店界面
-      updateResourceUI();
-    }
-  },
+  // ==================== UI（角色详情页时装切换） ====================
   
   // 显示角色时装切换界面 - PRTS风格
   showCharSkinPanel(charId) {
@@ -359,9 +239,31 @@ const SkinSystem = {
     
     if (result.success) {
       closeModal();
+      
       // 刷新详情界面
       if (typeof refreshCharDetail === 'function') {
         refreshCharDetail();
+      }
+      
+      // 清除队伍渲染缓存
+      if (typeof clearTeamRenderCache === 'function') {
+        clearTeamRenderCache();
+      }
+      
+      // 清除spine实例缓存
+      if (typeof clearSpineInstances === 'function') {
+        clearSpineInstances('spine-slot-spine-');
+      }
+      
+      // 强制清空队伍槽位容器，确保重新渲染
+      const slotsDiv = document.getElementById('team-slots');
+      if (slotsDiv) {
+        slotsDiv.innerHTML = '';
+      }
+      
+      // 刷新队伍UI
+      if (typeof updateTeamUI === 'function') {
+        updateTeamUI();
       }
     } else {
       alert(result.message);

@@ -23,11 +23,31 @@ function showCharDetail(charName) {
     bgImg.style.background = 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)';
   }
   
-  // 设置立绘
+  // 设置立绘（优先使用时装立绘）
+  const artWrapper = document.getElementById('char-detail-art-wrapper');
   const artImg = document.getElementById('char-detail-art');
-  if (data.art) {
-    artImg.src = data.art;
+  let artSrc = data.art;
+  let artOffset = null;
+  
+  // 检查是否有装备时装
+  if (data.id && typeof SkinSystem !== 'undefined') {
+    const skinArt = SkinSystem.getSkinArt(data.id);
+    if (skinArt) {
+      artSrc = skinArt;
+    }
+    artOffset = SkinSystem.getSkinArtOffset(data.id);
+  }
+  
+  if (artSrc) {
+    artImg.src = artSrc;
     artImg.style.display = 'block';
+    
+    // 应用偏移到wrapper容器
+    if (artOffset) {
+      artWrapper.style.transform = `translate3d(${artOffset.x}px, ${artOffset.y}px, ${artOffset.z}px)`;
+    } else {
+      artWrapper.style.transform = 'translate3d(0, 0, 0)';
+    }
   } else {
     artImg.style.display = 'none';
   }
@@ -262,6 +282,21 @@ function selectSkinFromList(charId, skinId) {
   
   // 重新渲染列表
   renderSkinList();
+  
+  // 刷新队伍UI（确保队伍页面也更新spine）
+  if (typeof clearTeamRenderCache === 'function') {
+    clearTeamRenderCache();
+  }
+  if (typeof clearSpineInstances === 'function') {
+    clearSpineInstances('spine-slot-spine-');
+  }
+  const slotsDiv = document.getElementById('team-slots');
+  if (slotsDiv) {
+    slotsDiv.innerHTML = '';
+  }
+  if (typeof updateTeamUI === 'function') {
+    updateTeamUI();
+  }
 }
 
 // 刷新立绘显示（不退出时装模式）
@@ -271,19 +306,31 @@ function refreshCharDetailArt() {
   const data = CHARACTER_DATA[currentDetailChar];
   if (!data) return;
   
-  // 获取当前装备的时装立绘
+  // 获取当前装备的时装立绘和偏移
   let artSrc = data.art;
+  let artOffset = null;
+  
   if (data.id && typeof SkinSystem !== 'undefined') {
     const skinArt = SkinSystem.getSkinArt(data.id);
     if (skinArt) {
       artSrc = skinArt;
     }
+    artOffset = SkinSystem.getSkinArtOffset(data.id);
   }
   
+  const artWrapper = document.getElementById('char-detail-art-wrapper');
   const artImg = document.getElementById('char-detail-art');
+  
   if (artSrc) {
     artImg.src = artSrc;
     artImg.style.display = 'block';
+    
+    // 应用偏移到wrapper容器
+    if (artOffset) {
+      artWrapper.style.transform = `translate3d(${artOffset.x}px, ${artOffset.y}px, ${artOffset.z}px)`;
+    } else {
+      artWrapper.style.transform = 'translate3d(0, 0, 0)';
+    }
   }
 }
 
