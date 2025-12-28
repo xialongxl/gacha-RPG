@@ -51,6 +51,11 @@ function startBattle(stage) {
 
   saveState();
   
+  // 清理所有Spine实例，防止WebGL上下文过多
+  if (typeof clearAllSpineInstances === 'function') {
+    clearAllSpineInstances();
+  }
+  
   resetBattle();
   renderedSpineUnits.clear();
   battle.active = true;
@@ -269,9 +274,21 @@ function renderSummonsSideInitial() {
     container.id = 'summon-side';
     container.className = 'battle-side summon-side';
     allyContainer.parentNode.insertBefore(container, allyContainer.nextSibling);
+    
+    // 初始化拖拽功能
+    initSummonSideDrag(container);
   }
   
-  container.innerHTML = '<h3>🔮 召唤物</h3>';
+  // 添加可拖拽标题栏和内容区
+  container.innerHTML = `
+    <div class="summon-side-header">
+      <span class="summon-side-title">🔮 召唤物</span>
+      <button class="summon-side-minimize" onclick="toggleSummonSideMinimize()">−</button>
+    </div>
+    <div class="summon-side-content"></div>
+  `;
+  
+  const content = container.querySelector('.summon-side-content');
   
   // 如果没有召唤物，显示空位提示
   if (battle.summons.length === 0) {
@@ -644,6 +661,16 @@ function showSkillButtons(unit) {
     const btn = document.createElement('button');
     btn.className = `skill-btn ${canUse ? '' : 'disabled'} ${isLeaderBoosted ? 'leader-boosted' : ''}`;
     
+    // 添加技能悬浮提示
+    let tooltip = `【${skillName}】\n`;
+    tooltip += `消耗: ${actualCost} 能量 | 获得: ${skill.gain} 能量\n`;
+    tooltip += `目标: ${skill.target === 'single' ? '单体敌人' : skill.target === 'all' ? '全体敌人' : skill.target === 'ally' ? '单体队友' : skill.target === 'self' ? '自身' : '全体'}`;
+    if (skill.damage) tooltip += `\n伤害: ${skill.damage}% ATK`;
+    if (skill.heal) tooltip += `\n治疗: ${skill.heal}% HP`;
+    if (skill.stun) tooltip += `\n眩晕: ${skill.stun}回合`;
+    if (skill.buff) tooltip += `\n增益: ATK+${skill.buff}%`;
+    btn.title = tooltip;
+    
     // 召唤物显示特殊标识
     if (unit.isSummon) {
       btn.innerHTML = `🔮 ${skillName}`;
@@ -684,10 +711,10 @@ function selectSkill(skillName, unit) {
   }
 }
 
-// 显示敌人目标选择
+// 显示敌人目标选择（支持点击单位）
 function showEnemyTargetSelect() {
   const div = document.getElementById('target-select');
-  div.innerHTML = '<span>选择目标：</span>';
+  div.innerHTML = '<span>选择目标：（可点击敌方单位）</span>';
   
   const aliveEnemies = battle.enemies.filter(e => e.currentHp > 0);
   
@@ -696,6 +723,25 @@ function showEnemyTargetSelect() {
     e.affixes && e.affixes.includes('taunt')
   );
   const hasTaunt = tauntEnemies.length > 0;
+  
+  // 给敌方单位添加点击事件
+  aliveEnemies.forEach(enemy => {
+    const unitDiv = document.getElementById(`unit-${enemy.unitId}`);
+    if (unitDiv) {
+      const isTauntEnemy = enemy.affixes && enemy.affixes.includes('taunt');
+      const isDisabled = hasTaunt && !isTauntEnemy;
+      
+      if (!isDisabled) {
+        unitDiv.classList.add('selectable');
+        unitDiv.onclick = () => {
+          clearUnitSelection();
+          executePlayerSkill(battle.selectedSkill, enemy);
+        };
+      } else {
+        unitDiv.classList.add('disabled-target');
+      }
+    }
+  });
   
   aliveEnemies.forEach(enemy => {
     let shieldInfo = '';
@@ -1079,6 +1125,17 @@ function endBattle(victory) {
   } else {
     showModal('💀 战斗失败', '<p>队伍全灭，请重整旗鼓！</p>');
   }
+}
+
+// 清除单位选择状态
+function clearUnitSelection() {
+  document.querySelectorAll('.battle-unit.selectable').forEach(el => {
+    el.classList.remove('selectable');
+    el.onclick = null;
+  });
+  document.querySelectorAll('.battle-unit.disabled-target').forEach(el => {
+    el.classList.remove('disabled-target');
+  });
 }
 
 // 撤退

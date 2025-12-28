@@ -3,6 +3,89 @@
 // Spine播放器实例管理（存储Pixi App和Spine对象）
 const spineInstances = new Map();
 
+// 已加载的SpineData缓存（key为skel文件路径，value为spineData）
+const spineDataCache = new Map();
+
+// 最大WebGL上下文数量限制（浏览器通常限制8-16个）
+const MAX_SPINE_INSTANCES = 8;
+
+// 清理所有Spine实例
+function clearAllSpineInstances() {
+  spineInstances.forEach((instance, id) => {
+    try {
+      if (instance && instance.app && typeof instance.app.destroy === 'function') {
+        instance.app.destroy(true, { children: true, texture: true, baseTexture: true });
+      }
+    } catch (e) {
+      console.warn('销毁Pixi实例失败:', id, e);
+    }
+    const container = document.getElementById(id);
+    if (container) container.innerHTML = '';
+  });
+  spineInstances.clear();
+  
+  // 清理Pixi纹理缓存
+  if (typeof PIXI !== 'undefined') {
+    try {
+      // 清理Loader缓存
+      if (PIXI.Loader && PIXI.Loader.shared) {
+        PIXI.Loader.shared.reset();
+      }
+      // 清理纹理缓存
+      if (PIXI.utils && PIXI.utils.clearTextureCache) {
+        PIXI.utils.clearTextureCache();
+      }
+      // 清理BaseTexture缓存
+      if (PIXI.utils && PIXI.utils.BaseTextureCache) {
+        for (const key in PIXI.utils.BaseTextureCache) {
+          delete PIXI.utils.BaseTextureCache[key];
+        }
+      }
+      // 清理Texture缓存
+      if (PIXI.utils && PIXI.utils.TextureCache) {
+        for (const key in PIXI.utils.TextureCache) {
+          delete PIXI.utils.TextureCache[key];
+        }
+      }
+    } catch (e) {
+      console.warn('清理Pixi缓存失败:', e);
+    }
+  }
+  
+  // 同时清理SpineData缓存，确保完全释放
+  spineDataCache.clear();
+  
+  console.log('已清理所有Spine实例和纹理缓存');
+}
+
+// 限制Spine实例数量，清理最旧的
+function limitSpineInstances() {
+  while (spineInstances.size >= MAX_SPINE_INSTANCES) {
+    // 清理最旧的实例
+    const firstKey = spineInstances.keys().next().value;
+    if (firstKey) {
+      destroySingleSpineInstance(firstKey);
+    } else {
+      break;
+    }
+  }
+}
+
+// 销毁单个Spine实例
+function destroySingleSpineInstance(id) {
+  const instance = spineInstances.get(id);
+  if (instance) {
+    try {
+      if (instance.app) {
+        instance.app.destroy(true, { children: true, texture: true, baseTexture: true });
+      }
+    } catch (e) {}
+  }
+  const container = document.getElementById(id);
+  if (container) container.innerHTML = '';
+  spineInstances.delete(id);
+}
+
 // 创建Spine播放器（使用Pixi渲染）
 function createSpinePlayer(containerId, spineData) {
   if (!spineData || !spineData.skel || !spineData.atlas) {
@@ -20,6 +103,9 @@ function createSpinePlayer(containerId, spineData) {
   
   // 已经有内容了，跳过
   if (container.children.length > 0) return true;
+  
+  // 限制实例数量
+  limitSpineInstances();
   
   // 获取容器尺寸
   const containerWidth = container.offsetWidth || 125;
@@ -41,7 +127,20 @@ function createSpinePlayer(containerId, spineData) {
     app.view.style.height = containerHeight + 'px';
     container.appendChild(app.view);
     
-    // 使用 PIXI.Loader 加载Spine资源 (PixiJS 6.x)
+    // 立即记录实例，防止异步期间重复创建
+    spineInstances.set(containerId, { app, spine: null });
+    
+    // 检查SpineData是否已缓存
+    const cacheKey = spineData.skel;
+    
+    if (spineDataCache.has(cacheKey)) {
+      // 直接使用缓存的SpineData
+      const cachedSpineData = spineDataCache.get(cacheKey);
+      createSpineFromData(app, cachedSpineData, containerId, spineData.animation, containerWidth, containerHeight);
+      return true;
+    }
+    
+    // 首次加载资源
     const loader = new PIXI.Loader();
     const assetName = containerId + '_spine';
     
@@ -55,6 +154,9 @@ function createSpinePlayer(containerId, spineData) {
           showPlaceholder(containerId);
           return;
         }
+        
+        // 缓存SpineData
+        spineDataCache.set(cacheKey, spineResource.spineData);
         
         // 创建Spine动画对象
         const spineAnim = new PIXI.spine.Spine(spineResource.spineData);
@@ -132,6 +234,54 @@ function createSpinePlayer(containerId, spineData) {
   }
   
   return true;
+}
+
+// 从缓存的SpineData创建Spine（用于重复使用同一角色资源）
+function createSpineFromData(app, cachedSpineData, containerId, animation, containerWidth, containerHeight) {
+  try {
+    const spineAnim = new PIXI.spine.Spine(cachedSpineData);
+    
+    // 播放动画
+    const targetAnim = animation || 'Idle';
+    const animations = spineAnim.spineData.animations;
+    let animToPlay = null;
+    
+    for (let i = 0; i < animations.length; i++) {
+      if (animations[i].name === targetAnim) {
+        animToPlay = targetAnim;
+        break;
+      }
+    }
+    if (!animToPlay && animations.length > 0) {
+      animToPlay = animations[0].name;
+    }
+    if (animToPlay) {
+      spineAnim.state.setAnimation(0, animToPlay, true);
+    }
+    
+    // 计算缩放
+    const bounds = spineAnim.getLocalBounds();
+    const scaleX = (containerWidth * 0.85) / bounds.width;
+    const scaleY = (containerHeight * 0.85) / bounds.height;
+    const scale = Math.min(scaleX, scaleY);
+    spineAnim.scale.set(scale);
+    
+    // 定位
+    const boundsCenter = {
+      x: (bounds.x + bounds.width / 2) * scale,
+      y: (bounds.y + bounds.height / 2) * scale
+    };
+    spineAnim.x = containerWidth / 2 - boundsCenter.x;
+    spineAnim.y = containerHeight / 2 - boundsCenter.y;
+    
+    app.stage.addChild(spineAnim);
+    spineInstances.set(containerId, { app, spine: spineAnim });
+    
+    console.log('Spine从缓存加载:', containerId);
+  } catch (e) {
+    console.error('从缓存创建Spine失败:', containerId, e);
+    showPlaceholder(containerId);
+  }
 }
 
 // 显示占位符
@@ -314,9 +464,118 @@ function addBattleLog(text, type = 'normal') {
 
 // 渲染战斗日志
 function renderBattleLog() {
-  const logDiv = document.getElementById('battle-log');
-  logDiv.innerHTML = battle.log.map(l => 
-    `<div class="log-entry ${l.type}">${l.text}</div>`
+  let container = document.getElementById('battle-log');
+  
+  // 添加可拖拽头部（如果不存在）
+  if (!container.querySelector('.battle-log-header')) {
+    const header = document.createElement('div');
+    header.className = 'battle-log-header';
+    header.innerHTML = `
+      <span class="battle-log-title">📜 战斗日志</span>
+      <button class="battle-log-minimize">−</button>
+    `;
+    
+    const content = document.createElement('div');
+    content.className = 'battle-log-content';
+    content.id = 'battle-log-content';
+    
+    // 移动原有内容
+    content.innerHTML = container.innerHTML;
+    container.innerHTML = '';
+    container.appendChild(header);
+    container.appendChild(content);
+    
+    // 初始化拖拽
+    initBattleLogDrag(container, header);
+    
+    // 最小化按钮
+    header.querySelector('.battle-log-minimize').onclick = (e) => {
+      e.stopPropagation();
+      container.classList.toggle('minimized');
+      e.target.textContent = container.classList.contains('minimized') ? '+' : '−';
+    };
+  }
+  
+  const content = document.getElementById('battle-log-content');
+  content.innerHTML = battle.log.map(entry => 
+    `<div class="log-entry ${entry.type}">${entry.text}</div>`
   ).join('');
-  logDiv.scrollTop = logDiv.scrollHeight;
+  content.scrollTop = content.scrollHeight;
+}
+
+// 战斗日志拖拽功能
+function initBattleLogDrag(container, header) {
+  let isDragging = false;
+  let startX, startY, startLeft, startTop;
+  
+  header.addEventListener('mousedown', (e) => {
+    if (e.target.classList.contains('battle-log-minimize')) return;
+    isDragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    const rect = container.getBoundingClientRect();
+    startLeft = rect.left;
+    startTop = rect.top;
+    container.style.transition = 'none';
+  });
+  
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    container.style.left = (startLeft + dx) + 'px';
+    container.style.top = (startTop + dy) + 'px';
+    container.style.right = 'auto';
+    container.style.bottom = 'auto';
+  });
+  
+  document.addEventListener('mouseup', () => {
+    isDragging = false;
+    container.style.transition = '';
+  });
+}
+
+// 召唤物区域拖拽功能
+function initSummonSideDrag(container) {
+  let isDragging = false;
+  let startX, startY, startLeft, startTop;
+  
+  container.addEventListener('mousedown', (e) => {
+    if (!e.target.classList.contains('summon-side-header') && 
+        !e.target.classList.contains('summon-side-title')) return;
+    if (e.target.classList.contains('summon-side-minimize')) return;
+    isDragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    const rect = container.getBoundingClientRect();
+    startLeft = rect.left;
+    startTop = rect.top;
+    container.style.transition = 'none';
+    container.style.transform = 'none';
+  });
+  
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    container.style.left = (startLeft + dx) + 'px';
+    container.style.top = (startTop + dy) + 'px';
+  });
+  
+  document.addEventListener('mouseup', () => {
+    isDragging = false;
+    container.style.transition = '';
+  });
+}
+
+// 召唤物区域最小化切换
+function toggleSummonSideMinimize() {
+  const container = document.getElementById('summon-side');
+  if (container) {
+    container.classList.toggle('minimized');
+    const btn = container.querySelector('.summon-side-minimize');
+    if (btn) {
+      btn.textContent = container.classList.contains('minimized') ? '+' : '−';
+    }
+  }
 }

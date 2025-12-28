@@ -298,25 +298,30 @@
 
       <div class="battle-field" id="battle-field">
 
-        <!-- AT条 -->
+        <!-- AT条 - 固定在顶部 -->
         <div id="at-bar" class="at-bar">
           <div class="at-bar-label">行动顺序</div>
           <div id="at-bar-units" class="at-bar-units"></div>
         </div>
 
-        <div class="battle-area">
-          <div class="battle-side" id="ally-side"></div>
-          <div class="battle-vs">⚔️</div>
-          <div class="battle-side" id="enemy-side"></div>
+        <!-- 中间区域：战斗区域 + 日志 -->
+        <div class="battle-middle">
+          <div class="battle-area">
+            <div class="battle-side" id="ally-side"></div>
+            <div class="battle-vs">⚔️</div>
+            <div class="battle-side" id="enemy-side"></div>
+          </div>
+
+          <div class="battle-log" id="battle-log"></div>
         </div>
 
-        <div class="battle-log" id="battle-log"></div>
-
-        <div class="skill-buttons" id="skill-buttons"></div>
-        <div class="target-select" id="target-select"></div>
-
-        <div style="text-align:center; margin-top:15px;">
-          <button class="btn btn-warning" id="btn-flee">撤退</button>
+        <!-- 底部控制区 - 固定在底部 -->
+        <div class="battle-controls">
+          <div class="skill-buttons" id="skill-buttons"></div>
+          <div class="target-select" id="target-select"></div>
+          <div style="text-align:center; margin-top:10px;">
+            <button class="btn btn-warning" id="btn-flee">撤退</button>
+          </div>
         </div>
       </div>
     </div>

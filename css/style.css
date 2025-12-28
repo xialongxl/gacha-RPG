@@ -373,11 +373,51 @@ body {
 
 .battle-field {
   display: none;
-  padding: 20px;
+  padding: 0;
 }
 
 .battle-field.active {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  background: linear-gradient(180deg, #0d1b2a 0%, #1b263b 50%, #0d1b2a 100%);
+}
+
+/* 战斗界面内部容器 - 限制最大宽度并居中 */
+.battle-field.active > * {
+  max-width: 1000px;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+  padding-left: 20px;
+  padding-right: 20px;
+  box-sizing: border-box;
+}
+
+/* AT条 - 固定在顶部，居中显示 */
+.battle-field .at-bar {
+  flex-shrink: 0;
+  margin: 0 auto;
+  border-radius: 0;
+  padding: 8px 20px;
+  background: linear-gradient(180deg, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.3) 100%);
+  border-bottom: 1px solid rgba(255,215,0,0.3);
+}
+
+/* 战斗中间区域容器 */
+.battle-middle {
+  flex: 1;
+  overflow: visible;
+  padding: 10px 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  min-height: 0;
 }
 
 /* 战斗区域 */
@@ -386,7 +426,16 @@ body {
   justify-content: space-between;
   align-items: flex-start;
   gap: 20px;
-  margin-bottom: 20px;
+  flex: 1;
+}
+
+/* 战斗底部控制区 - 固定在底部 */
+.battle-controls {
+  flex-shrink: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.7) 100%);
+  padding: 12px 20px 15px;
+  border-top: 1px solid rgba(102,126,234,0.4);
+  backdrop-filter: blur(5px);
 }
 
 .battle-side {
@@ -407,28 +456,76 @@ body {
   align-items: center;
 }
 
-/* ==================== 战斗单位（横向布局 + 透明模型） ==================== */
+/* ==================== 战斗单位（横向布局 + 透明模型） - 美化版 ==================== */
 .battle-unit {
   display: flex;
   align-items: center;
   gap: 12px;
-  background: rgba(255,255,255,0.1);
-  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(60,80,120,0.3) 0%, rgba(40,60,100,0.2) 100%);
+  border-radius: 12px;
   padding: 12px;
-  margin: 10px 0;
+  margin: 8px 0;
   position: relative;
+  border: 1px solid rgba(100,150,255,0.3);
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.battle-unit:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(100,150,255,0.3);
+  border-color: rgba(100,150,255,0.6);
 }
 
 .battle-unit.enemy {
-  background: rgba(255,100,100,0.1);
+  background: linear-gradient(135deg, rgba(120,60,60,0.3) 0%, rgba(100,40,40,0.2) 100%);
+  border-color: rgba(255,100,100,0.3);
+}
+
+.battle-unit.enemy:hover {
+  box-shadow: 0 4px 15px rgba(255,100,100,0.3);
+  border-color: rgba(255,100,100,0.6);
 }
 
 .battle-unit.acting {
-  box-shadow: 0 0 15px rgba(255,255,0,0.5);
+  box-shadow: 0 0 25px rgba(255,215,0,0.6);
+  border-color: #ffd700;
+  animation: unit-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes unit-pulse {
+  0%, 100% { box-shadow: 0 0 15px rgba(255,215,0,0.4); }
+  50% { box-shadow: 0 0 30px rgba(255,215,0,0.8); }
 }
 
 .battle-unit.dead {
   opacity: 0.3;
+  filter: grayscale(50%);
+  pointer-events: none;
+}
+
+/* 可选择目标样式 */
+.battle-unit.selectable {
+  cursor: pointer;
+  animation: selectable-pulse 0.8s ease-in-out infinite;
+  border-color: #ff6b6b !important;
+}
+
+@keyframes selectable-pulse {
+  0%, 100% { box-shadow: 0 0 10px rgba(255,107,107,0.5); }
+  50% { box-shadow: 0 0 25px rgba(255,107,107,0.9), 0 0 40px rgba(255,107,107,0.4); }
+}
+
+.battle-unit.selectable:hover {
+  transform: translateY(-5px) scale(1.02);
+  box-shadow: 0 0 35px rgba(255,107,107,1);
+}
+
+/* 被嘲讽禁用的单位 */
+.battle-unit.disabled-target {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: grayscale(30%);
 }
 
 /* 角色模型 - 透明背景 */
@@ -448,10 +545,11 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255,255,255,0.08);
-  border-radius: 8px;
-  font-size: 32px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+  border-radius: 10px;
+  font-size: 36px;
   flex-shrink: 0;
+  border: 1px solid rgba(255,255,255,0.15);
 }
 
 .battle-unit .unit-info {
@@ -463,100 +561,278 @@ body {
   font-size: 14px;
   font-weight: bold;
   margin-bottom: 8px;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
 }
 
+/* 血条美化 - 发光效果 */
 .battle-unit .hp-bar {
-  height: 8px;
-  background: rgba(255,255,255,0.2);
-  border-radius: 4px;
+  height: 10px;
+  background: rgba(0,0,0,0.4);
+  border-radius: 5px;
   overflow: hidden;
-  margin: 5px 0;
+  margin: 6px 0;
+  border: 1px solid rgba(255,255,255,0.1);
+  position: relative;
 }
 
 .battle-unit .hp-bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, #11998e, #38ef7d);
-  transition: width 0.3s;
+  background: linear-gradient(90deg, #00d9a5 0%, #00ff88 50%, #00d9a5 100%);
+  background-size: 200% 100%;
+  animation: hp-shimmer 2s linear infinite;
+  transition: width 0.4s ease;
+  box-shadow: 0 0 8px rgba(0,255,136,0.5);
+  border-radius: 4px;
+}
+
+@keyframes hp-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 .battle-unit .hp-bar-fill.low {
-  background: linear-gradient(90deg, #f12711, #f5af19);
+  background: linear-gradient(90deg, #ff4444 0%, #ff8800 50%, #ff4444 100%);
+  background-size: 200% 100%;
+  box-shadow: 0 0 8px rgba(255,68,68,0.6);
+  animation: hp-shimmer 1s linear infinite;
 }
 
+/* 能量条美化 */
 .battle-unit .energy-bar {
-  height: 6px;
-  background: rgba(255,255,255,0.2);
-  border-radius: 3px;
+  height: 7px;
+  background: rgba(0,0,0,0.4);
+  border-radius: 4px;
   overflow: hidden;
   margin: 5px 0;
+  border: 1px solid rgba(255,255,255,0.1);
 }
 
 .battle-unit .energy-bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, #ffd43b, #fab005);
-  transition: width 0.3s;
+  background: linear-gradient(90deg, #ffd700 0%, #ffee55 50%, #ffd700 100%);
+  background-size: 200% 100%;
+  animation: energy-shimmer 1.5s linear infinite;
+  transition: width 0.4s ease;
+  box-shadow: 0 0 6px rgba(255,215,0,0.5);
+  border-radius: 3px;
+}
+
+@keyframes energy-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 .battle-unit .unit-stats {
   font-size: 11px;
-  color: #aaa;
+  color: #bbb;
+  margin-top: 4px;
 }
 
-/* ==================== 战斗日志 ==================== */
+/* ==================== 战斗日志 - 可拖拽悬浮窗 ==================== */
 .battle-log {
-  background: rgba(0,0,0,0.3);
+  position: fixed;
+  right: 15px;
+  bottom: 90px;
+  width: 300px;
+  background: linear-gradient(180deg, rgba(10,15,30,0.95) 0%, rgba(15,20,40,0.98) 100%);
   border-radius: 10px;
-  padding: 15px;
-  height: 150px;
+  padding: 0;
+  height: auto;
+  max-height: 200px;
+  overflow: hidden;
+  border: 1px solid rgba(102,126,234,0.4);
+  box-shadow: 0 6px 30px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.05);
+  backdrop-filter: blur(12px);
+  z-index: 200;
+  resize: both;
+  min-width: 220px;
+  min-height: 80px;
+}
+
+/* 可拖拽标题栏 */
+.battle-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: linear-gradient(180deg, rgba(40,50,80,0.8) 0%, rgba(30,40,60,0.6) 100%);
+  cursor: move;
+  border-bottom: 1px solid rgba(102,126,234,0.3);
+  user-select: none;
+}
+
+.battle-log-title {
+  font-size: 13px;
+  color: #a0c4ff;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+
+.battle-log-minimize {
+  width: 22px;
+  height: 22px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 5px;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.battle-log-minimize:hover {
+  background: rgba(102,126,234,0.4);
+  border-color: rgba(102,126,234,0.6);
+  color: #fff;
+}
+
+.battle-log-content {
+  padding: 8px 12px 10px;
+  max-height: 150px;
   overflow-y: auto;
-  margin-bottom: 15px;
+}
+
+/* 美化滚动条 */
+.battle-log-content::-webkit-scrollbar {
+  width: 5px;
+}
+
+.battle-log-content::-webkit-scrollbar-track {
+  background: rgba(255,255,255,0.03);
+  border-radius: 3px;
+}
+
+.battle-log-content::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(102,126,234,0.5) 0%, rgba(118,75,162,0.5) 100%);
+  border-radius: 3px;
+}
+
+.battle-log-content::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(102,126,234,0.7) 0%, rgba(118,75,162,0.7) 100%);
+}
+
+.battle-log.minimized {
+  max-height: 42px;
+  resize: none;
+}
+
+.battle-log.minimized .battle-log-content {
+  display: none;
 }
 
 .log-entry {
-  font-size: 12px;
-  padding: 3px 0;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
+  font-size: 11px;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  line-height: 1.4;
 }
 
-.log-entry.damage { color: #ff6b6b; }
-.log-entry.heal { color: #51cf66; }
-.log-entry.system { color: #ffd43b; }
+.log-entry:last-child {
+  border-bottom: none;
+}
 
-/* ==================== 技能按钮 ==================== */
+.log-entry.damage { color: #ff7b7b; }
+.log-entry.heal { color: #69db7c; }
+.log-entry.system { color: #ffe066; }
+
+/* ==================== 技能按钮 - 美化版 ==================== */
 .skill-buttons {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px;
   justify-content: center;
+  padding: 5px 0;
 }
 
 .skill-btn {
-  padding: 10px 20px;
+  padding: 12px 24px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border: none;
-  border-radius: 8px;
+  border: 2px solid rgba(255,255,255,0.2);
+  border-radius: 12px;
   color: #fff;
   cursor: pointer;
-  font-size: 13px;
-  transition: transform 0.2s;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 4px 15px rgba(102,126,234,0.3);
+}
+
+/* 技能按钮发光效果 */
+.skill-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.skill-btn:hover::before {
+  left: 100%;
 }
 
 .skill-btn:hover {
-  transform: scale(1.05);
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 8px 25px rgba(102,126,234,0.5);
+  border-color: rgba(255,255,255,0.4);
+}
+
+.skill-btn:active {
+  transform: translateY(-1px) scale(0.98);
 }
 
 .skill-btn.disabled {
   opacity: 0.4;
   cursor: not-allowed;
-  background: #555;
+  background: linear-gradient(135deg, #444 0%, #333 100%);
   transform: none;
+  box-shadow: none;
+  border-color: rgba(255,255,255,0.1);
+}
+
+.skill-btn.disabled::before {
+  display: none;
 }
 
 .skill-btn .skill-cost {
   font-size: 10px;
-  opacity: 0.8;
+  opacity: 0.9;
   display: block;
-  margin-top: 2px;
+  margin-top: 4px;
+  color: #ffd700;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+/* 技能提示悬浮 */
+.skill-btn[title] {
+  position: relative;
+}
+
+.skill-btn[title]:hover::after {
+  content: attr(title);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.9);
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  white-space: nowrap;
+  z-index: 100;
+  margin-bottom: 8px;
+  border: 1px solid rgba(255,255,255,0.2);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
 }
 
 /* ==================== 目标选择 ==================== */
@@ -1189,71 +1465,85 @@ body {
   overflow: hidden;
 }
 
-/* ==================== AT条样式 ==================== */
+/* ==================== AT条样式 - 美化版 ==================== */
 .at-bar {
-  background: rgba(0, 0, 0, 0.5);
-  border-radius: 10px;
-  padding: 10px 15px;
+  background: linear-gradient(135deg, rgba(0,0,0,0.6) 0%, rgba(20,20,40,0.7) 100%);
+  border-radius: 12px;
+  padding: 12px 18px;
   margin-bottom: 15px;
+  border: 1px solid rgba(255,215,0,0.2);
+  box-shadow: 0 4px 15px rgba(0,0,0,0.3);
 }
 
 .at-bar-label {
-  font-size: 12px;
-  color: #aaa;
-  margin-bottom: 8px;
+  font-size: 11px;
+  color: #ffd700;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  font-weight: bold;
 }
 
 .at-bar-units {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   overflow-x: auto;
-  padding-bottom: 5px;
+  padding-bottom: 8px;
 }
 
 .at-unit {
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 60px;
-  padding: 8px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.1);
-  transition: all 0.3s;
+  min-width: 65px;
+  padding: 10px 8px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
 }
 
 .at-unit.ally {
-  border: 2px solid #4ade80;
+  border-color: #4ade80;
+  background: linear-gradient(180deg, rgba(74,222,128,0.15) 0%, rgba(74,222,128,0.05) 100%);
 }
 
 .at-unit.enemy {
-  border: 2px solid #f87171;
+  border-color: #f87171;
+  background: linear-gradient(180deg, rgba(248,113,113,0.15) 0%, rgba(248,113,113,0.05) 100%);
 }
 
 .at-unit.current {
-  background: rgba(255, 215, 0, 0.3);
-  box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
-  transform: scale(1.1);
+  background: linear-gradient(180deg, rgba(255,215,0,0.4) 0%, rgba(255,215,0,0.2) 100%);
+  box-shadow: 0 0 20px rgba(255,215,0,0.6);
+  transform: scale(1.15);
+  border-color: #ffd700;
 }
 
 .at-unit-icon {
-  font-size: 20px;
-  margin-bottom: 4px;
+  font-size: 22px;
+  margin-bottom: 5px;
+  filter: drop-shadow(0 2px 3px rgba(0,0,0,0.3));
 }
 
 .at-unit-name {
   font-size: 11px;
   color: #fff;
   text-align: center;
-  max-width: 55px;
+  max-width: 58px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 500;
 }
 
 .at-unit-spd {
-  font-size: 10px;
+  font-size: 9px;
   color: #aaa;
-  margin-top: 2px;
+  margin-top: 3px;
+  background: rgba(0,0,0,0.3);
+  padding: 1px 6px;
+  border-radius: 8px;
 }
 
 /* 滚动条美化 */
@@ -1939,23 +2229,93 @@ body {
 
 /* ==================== 召唤物系统样式 ==================== */
 
-/* 召唤物区域 */
+/* 召唤物区域 - 可拖拽悬浮窗 */
 #summon-side {
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  border: 2px solid #7b68ee;
-  border-radius: 8px;
-  padding: 10px;
-  margin: 10px 0;
-  min-height: 60px;
-  order: -1;
+  position: fixed;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 300px;
+  background: linear-gradient(180deg, rgba(26,26,46,0.95) 0%, rgba(22,33,62,0.98) 100%);
+  border: 1px solid rgba(147,112,219,0.4);
+  border-radius: 10px;
+  padding: 0;
+  z-index: 200;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 6px 30px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.05);
+}
+
+/* 可拖拽标题栏 */
+.summon-side-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: linear-gradient(180deg, rgba(75,60,130,0.8) 0%, rgba(55,40,90,0.6) 100%);
+  cursor: move;
+  border-bottom: 1px solid rgba(147,112,219,0.3);
+  user-select: none;
+}
+
+.summon-side-title {
+  font-size: 13px;
+  color: #dda0dd;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+
+.summon-side-minimize {
+  width: 22px;
+  height: 22px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 5px;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.summon-side-minimize:hover {
+  background: rgba(147,112,219,0.4);
+  border-color: rgba(147,112,219,0.6);
+  color: #fff;
+}
+
+.summon-side-content {
+  padding: 10px 12px;
+}
+
+/* 美化滚动条 */
+.summon-side-content::-webkit-scrollbar {
+  width: 5px;
+}
+
+.summon-side-content::-webkit-scrollbar-track {
+  background: rgba(255,255,255,0.03);
+  border-radius: 3px;
+}
+
+.summon-side-content::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(147,112,219,0.5) 0%, rgba(123,104,238,0.5) 100%);
+  border-radius: 3px;
+}
+
+#summon-side.minimized .summon-side-content {
+  display: none;
+}
+
+#summon-side.minimized .summon-side-content {
+  display: none;
 }
 
 #summon-side h3 {
-  color: #9370db;
-  margin: 0 0 10px 0;
-  font-size: 14px;
-  border-bottom: 1px solid #7b68ee;
-  padding-bottom: 5px;
+  display: none; /* 使用新的header代替 */
 }
 
 /* 召唤物空位提示 */
