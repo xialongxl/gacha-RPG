@@ -65,7 +65,7 @@ const CHARACTER_DATA_RAW = {
     atk: 220, 
     def: 40, 
     spd: 80, 
-    skills: ['普攻', '火山', '灼烧'],
+    skills: ['普攻', '二重咏唱', '点燃', '火山·真'],
     voiceText: ''
   },
   '凯尔希': { 

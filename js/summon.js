@@ -113,6 +113,13 @@ const SummonSystem = {
         stunOnHit: false    // 攻击附带眩晕
       },
       
+      // buff持续时间追踪（有持续时间的buff）
+      buffDurations: {
+        healPerTurn: 0,     // 每回合回血剩余回合数
+        doubleAttack: 0,    // 二连击剩余回合数
+        stunOnHit: 0        // 攻击附带眩晕剩余回合数
+      },
+      
       // 只有普攻
       skills: ['普攻'],
       
@@ -290,8 +297,8 @@ const SummonSystem = {
   
   // ==================== buff相关 ====================
   
-  // 给召唤物添加buff（技能调用）
-  addBuffToSummons(owner, buffType, value) {
+  // 给召唤物添加buff（技能调用，支持duration参数）
+  addBuffToSummons(owner, buffType, value, duration = 0) {
     const summons = this.getSummonsByOwner(owner);
     summons.forEach(summon => {
       switch (buffType) {
@@ -303,12 +310,15 @@ const SummonSystem = {
           break;
         case 'healPerTurn':
           summon.buffs.healPerTurn = value;  // 不叠加，覆盖
+          if (duration > 0) summon.buffDurations.healPerTurn = duration;
           break;
         case 'doubleAttack':
           summon.buffs.doubleAttack = value;
+          if (duration > 0) summon.buffDurations.doubleAttack = duration;
           break;
         case 'stunOnHit':
           summon.buffs.stunOnHit = value;
+          if (duration > 0) summon.buffDurations.stunOnHit = duration;
           break;
       }
     });
@@ -340,7 +350,7 @@ const SummonSystem = {
   
   // 召唤物回合开始时处理（回血等）
   onSummonTurnStart(summon) {
-    const result = { healed: 0 };
+    const result = { healed: 0, expiredBuffs: [] };
     
     // 每回合回血
     if (summon.buffs.healPerTurn > 0) {
@@ -350,7 +360,44 @@ const SummonSystem = {
       result.healed = summon.currentHp - oldHp;
     }
     
+    // 处理buff持续时间
+    result.expiredBuffs = this.processSummonBuffDurations(summon);
+    
     return result;
+  },
+  
+  // 处理召唤物buff持续时间（每回合结束时调用）
+  processSummonBuffDurations(summon) {
+    const expiredBuffs = [];
+    
+    // 处理healPerTurn
+    if (summon.buffDurations.healPerTurn > 0) {
+      summon.buffDurations.healPerTurn--;
+      if (summon.buffDurations.healPerTurn <= 0) {
+        summon.buffs.healPerTurn = 0;
+        expiredBuffs.push({ buffType: 'healPerTurn', name: '每回合回血' });
+      }
+    }
+    
+    // 处理doubleAttack
+    if (summon.buffDurations.doubleAttack > 0) {
+      summon.buffDurations.doubleAttack--;
+      if (summon.buffDurations.doubleAttack <= 0) {
+        summon.buffs.doubleAttack = false;
+        expiredBuffs.push({ buffType: 'doubleAttack', name: '二连击' });
+      }
+    }
+    
+    // 处理stunOnHit
+    if (summon.buffDurations.stunOnHit > 0) {
+      summon.buffDurations.stunOnHit--;
+      if (summon.buffDurations.stunOnHit <= 0) {
+        summon.buffs.stunOnHit = false;
+        expiredBuffs.push({ buffType: 'stunOnHit', name: '攻击附带眩晕' });
+      }
+    }
+    
+    return expiredBuffs;
   },
   
   // ==================== 清理 ====================

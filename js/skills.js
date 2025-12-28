@@ -124,6 +124,39 @@ const SKILL_EFFECTS = {
       { type: 'damage', multiplier: 1.2 }
     ]
   },
+
+  // ========== 艾雅法拉专属技能 ==========
+  '二重咏唱': {
+    cost: 20,
+    gain: 0,
+    target: 'self',
+    desc: '消耗20能量，SPD+60。第二次起额外ATK+60%（可叠加）',
+    effects: [
+      { type: 'buff', stat: 'spd', value: 60 },
+      { type: 'stacking_atk_buff', multiplier: 0.6, minUses: 2 }
+    ]
+  },
+  '点燃': {
+    cost: 30,
+    gain: 0,
+    target: 'single',
+    desc: '消耗30能量，造成370%伤害，周围敌人受185%溅射伤害，目标DEF-25%持续2回合',
+    effects: [
+      { type: 'damage', multiplier: 3.7 },
+      { type: 'splash_damage', multiplier: 1.85 },
+      { type: 'debuff_duration', stat: 'def', multiplier: 0.25, duration: 2 }
+    ]
+  },
+  '火山·真': {
+    cost: 100,
+    gain: 0,
+    target: 'random6',
+    desc: '消耗100能量，ATK+130%后随机攻击6个敌人',
+    effects: [
+      { type: 'self_buff_then_attack', atkBonus: 1.3 },
+      { type: 'damage', multiplier: 1.0 }
+    ]
+  },
   '眩晕': {
     cost: 50,
     gain: 0,
@@ -276,17 +309,17 @@ const SKILL_EFFECTS = {
     cost: 70,
     gain: 0,
     target: 'all',
-    desc: '消耗70能量，全体队友回复20%攻击力的HP，敌人全体减速30%',
+    desc: '消耗70能量，全体队友回复20%攻击力的HP，敌人全体减速30%(2回合)',
     effects: [
       { type: 'heal', multiplier: 0.2, target: 'all_ally' },
-      { type: 'debuff', stat: 'spd', multiplier: 0.3, target: 'all_enemy' }
+      { type: 'debuff_duration', stat: 'spd', multiplier: 0.3, target: 'all_enemy', duration: 2 }
     ]
   },
 
   // ========== 缪尔赛思技能 ==========
   '渐进性润化': {
     cost: 30,
-    gain: 0,
+    gain: 15,
     target: 'self',
     desc: '消耗30能量，全队回复15能量，自身与流形ATK+20%、SPD+10（可叠加）',
     effects: [
@@ -298,25 +331,25 @@ const SKILL_EFFECTS = {
     ]
   },
   '生态耦合': {
-    cost: 40,
-    gain: 0,
+    cost: 50,
+    gain: 20,
     target: 'self',
-    desc: '消耗40能量，全队回复20能量，流形每回合回复15%HP + 攻击变为二连击',
+    desc: '消耗50能量，全队回复20能量，流形每回合回复15%HP(5回合) + 攻击变为二连击(3回合)',
     effects: [
       { type: 'team_energy', amount: 20 },
-      { type: 'summon_buff', buffType: 'healPerTurn', value: 15 },
-      { type: 'summon_buff', buffType: 'doubleAttack', value: true }
+      { type: 'summon_buff', buffType: 'healPerTurn', value: 15, duration: 5 },
+      { type: 'summon_buff', buffType: 'doubleAttack', value: true, duration: 3 }
     ]
   },
   '浅层非熵适应': {
-    cost: 50,
-    gain: 0,
+    cost: 70,
+    gain: 25,
     target: 'self',
-    desc: '消耗50能量，全队回复25能量，自身ATK+30%，流形普攻附带眩晕1回合',
+    desc: '消耗70能量，全队回复25能量，自身ATK+30%，流形普攻附带眩晕(2回合)',
     effects: [
       { type: 'team_energy', amount: 25 },
       { type: 'owner_buff', buffType: 'atkPercent', value: 30 },
-      { type: 'summon_buff', buffType: 'stunOnHit', value: true }
+      { type: 'summon_buff', buffType: 'stunOnHit', value: true, duration: 2 }
     ]
   },
 
@@ -578,6 +611,19 @@ function executeSkillEffects(skill, user, target, isEnemy) {
         break;
       case 'owner_buff':
         executeOwnerBuffEffect(effect, user, result);
+        break;
+      // ====== 艾雅法拉专属效果 ======
+      case 'stacking_atk_buff':
+        executeStackingAtkBuff(effect, user, skill, result);
+        break;
+      case 'splash_damage':
+        executeSplashDamage(effect, user, atk, target, isEnemy, result);
+        break;
+      case 'debuff_duration':
+        executeDebuffDuration(effect, target, result);
+        break;
+      case 'self_buff_then_attack':
+        executeSelfBuffThenAttack(effect, user, result);
         break;
     }
   });
@@ -1034,7 +1080,8 @@ function executeDamageEffect(effect, user, atk, target, effectTarget, isEnemy, r
         
       case 'random2':
       case 'random3':
-        const times = effectTarget === 'random3' ? 3 : 2;
+      case 'random6':
+        const times = effectTarget === 'random6' ? 6 : (effectTarget === 'random3' ? 3 : 2);
         for (let i = 0; i < times; i++) {
           const alive = enemies.filter(e => e.currentHp > 0);
           if (alive.length === 0) break;
@@ -1235,20 +1282,22 @@ function executeTeamEnergyEffect(effect, user, isEnemy, result) {
 }
 
 /**
- * 给召唤物添加buff
+ * 给召唤物添加buff（支持持续时间）
  */
 function executeSummonBuffEffect(effect, user, result) {
   if (typeof SummonSystem === 'undefined') return;
   
   const buffType = effect.buffType;
   const value = effect.value;
+  const duration = effect.duration || 0;  // 获取持续时间
   
-  SummonSystem.addBuffToSummons(user, buffType, value);
+  SummonSystem.addBuffToSummons(user, buffType, value, duration);
   
   // 日志
   const summons = SummonSystem.getSummonsByOwner(user);
   if (summons.length > 0) {
     let buffText = '';
+    let durationText = duration > 0 ? `（${duration}回合）` : '';
     switch (buffType) {
       case 'atkPercent':
         buffText = `ATK +${value}%`;
@@ -1257,13 +1306,13 @@ function executeSummonBuffEffect(effect, user, result) {
         buffText = `SPD +${value}`;
         break;
       case 'healPerTurn':
-        buffText = `每回合回血 ${value}%`;
+        buffText = `每回合回血 ${value}%${durationText}`;
         break;
       case 'doubleAttack':
-        buffText = `获得二连击`;
+        buffText = `获得二连击${durationText}`;
         break;
       case 'stunOnHit':
-        buffText = `攻击附带眩晕`;
+        buffText = `攻击附带眩晕${durationText}`;
         break;
     }
     result.logs.push({ text: `  → 🔮流形 ${buffText}！`, type: 'system' });
@@ -1294,4 +1343,171 @@ function executeOwnerBuffEffect(effect, user, result) {
       break;
   }
   result.logs.push({ text: `  → ${user.name} ${buffText}！`, type: 'system' });
+}
+
+// ==================== 艾雅法拉专属效果 ====================
+
+/**
+ * 叠加攻击力buff（二重咏唱）
+ * 第二次使用起才生效
+ */
+function executeStackingAtkBuff(effect, user, skill, result) {
+  // 初始化技能使用计数
+  if (!user.skillUseCount) user.skillUseCount = {};
+  const skillName = skill.name || '二重咏唱';
+  user.skillUseCount[skillName] = (user.skillUseCount[skillName] || 0) + 1;
+  
+  const useCount = user.skillUseCount[skillName];
+  const minUses = effect.minUses || 2;
+  
+  if (useCount >= minUses) {
+    const buffValue = Math.floor(user.atk * effect.multiplier);
+    user.buffAtk = (user.buffAtk || 0) + buffValue;
+    result.logs.push({ 
+      text: `  → 🔥 二重咏唱第${useCount}次！ATK +${buffValue}（+${Math.floor(effect.multiplier * 100)}%）！`, 
+      type: 'system' 
+    });
+  } else {
+    result.logs.push({ 
+      text: `  → 二重咏唱第${useCount}次（第${minUses}次起追加ATK+${Math.floor(effect.multiplier * 100)}%）`, 
+      type: 'system' 
+    });
+  }
+}
+
+/**
+ * 溅射伤害（点燃）
+ * 对主目标以外的敌人造成伤害
+ */
+function executeSplashDamage(effect, user, atk, target, isEnemy, result) {
+  if (isEnemy) return;
+  
+  const enemies = battle.enemies.filter(e => e.currentHp > 0 && e !== target);
+  if (enemies.length === 0) return;
+  
+  const splashDmg = Math.floor(atk * effect.multiplier);
+  
+  result.logs.push({ text: `  🔥 点燃爆炸！周围敌人受到溅射伤害：`, type: 'system' });
+  
+  enemies.forEach(enemy => {
+    const actualDmg = Math.max(1, splashDmg - enemy.def * 0.5);
+    enemy.currentHp -= actualDmg;
+    result.logs.push({ text: `  → ${enemy.name} 受到 ${actualDmg} 溅射伤害！`, type: 'damage' });
+  });
+}
+
+/**
+ * 持续减益（支持单体和全体目标）
+ */
+function executeDebuffDuration(effect, target, result) {
+  const effectTarget = effect.target || 'single';
+  
+  const applyDebuffToUnit = (t) => {
+    if (!t || t.currentHp <= 0) return;
+    
+    const debuffValue = Math.floor(t[effect.stat] * effect.multiplier);
+    
+    // 初始化持续debuff列表
+    if (!t.durationDebuffs) t.durationDebuffs = [];
+    
+    // 添加持续debuff
+    t.durationDebuffs.push({
+      stat: effect.stat,
+      value: debuffValue,
+      duration: effect.duration,
+      originalValue: t[effect.stat]
+    });
+    
+    // 立即应用debuff
+    switch (effect.stat) {
+      case 'def':
+        t.def = Math.max(0, t.def - debuffValue);
+        result.logs.push({ 
+          text: `  → ${t.name} DEF -${debuffValue}（持续${effect.duration}回合）！`, 
+          type: 'system' 
+        });
+        break;
+      case 'atk':
+        t.atk = Math.max(1, t.atk - debuffValue);
+        result.logs.push({ 
+          text: `  → ${t.name} ATK -${debuffValue}（持续${effect.duration}回合）！`, 
+          type: 'system' 
+        });
+        break;
+      case 'spd':
+        t.spd = Math.max(1, t.spd - debuffValue);
+        result.logs.push({ 
+          text: `  → ${t.name} SPD -${debuffValue}（持续${effect.duration}回合）！`, 
+          type: 'system' 
+        });
+        break;
+    }
+  };
+  
+  // 根据目标类型应用debuff
+  switch (effectTarget) {
+    case 'single':
+      applyDebuffToUnit(target);
+      break;
+    case 'all_enemy':
+      const enemies = battle.enemies.filter(e => e.currentHp > 0);
+      enemies.forEach(applyDebuffToUnit);
+      break;
+  }
+}
+
+/**
+ * 自我增益后攻击（火山·真）
+ */
+function executeSelfBuffThenAttack(effect, user, result) {
+  const atkBonus = effect.atkBonus || 1.3;
+  const buffValue = Math.floor(user.atk * atkBonus);
+  user.buffAtk = (user.buffAtk || 0) + buffValue;
+  
+  result.logs.push({ 
+    text: `  → 🌋 火山喷发！${user.name} ATK +${buffValue}（+${Math.floor(atkBonus * 100)}%）！`, 
+    type: 'system' 
+  });
+}
+
+/**
+ * 处理持续debuff的回合结束
+ * 需要在battle.js的回合结束时调用
+ */
+function processDurationDebuffs(unit) {
+  if (!unit.durationDebuffs || unit.durationDebuffs.length === 0) return [];
+  
+  const logs = [];
+  const expiredDebuffs = [];
+  
+  unit.durationDebuffs.forEach((debuff, index) => {
+    debuff.duration--;
+    
+    if (debuff.duration <= 0) {
+      // debuff到期，恢复属性
+      switch (debuff.stat) {
+        case 'def':
+          unit.def += debuff.value;
+          break;
+        case 'atk':
+          unit.atk += debuff.value;
+          break;
+        case 'spd':
+          unit.spd += debuff.value;
+          break;
+      }
+      logs.push({ 
+        text: `  → ${unit.name} 的${debuff.stat.toUpperCase()}减益效果结束！`, 
+        type: 'system' 
+      });
+      expiredDebuffs.push(index);
+    }
+  });
+  
+  // 移除到期的debuff（从后往前删除避免索引问题）
+  expiredDebuffs.reverse().forEach(index => {
+    unit.durationDebuffs.splice(index, 1);
+  });
+  
+  return logs;
 }
