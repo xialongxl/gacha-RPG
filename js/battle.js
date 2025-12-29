@@ -119,6 +119,13 @@ function startBattle(stage) {
     SummonSystem.init(battle.allies);
   }
   
+  // ====== 初始化充能技能（夜莺等） ======
+  battle.allies.forEach(ally => {
+    if (typeof initChargeSkills === 'function') {
+      initChargeSkills(ally);
+    }
+  });
+  
   document.getElementById('stage-panel').style.display = 'none';
   document.getElementById('battle-field').classList.add('active');
   
@@ -166,8 +173,10 @@ function getUnitSpd(unit) {
   return spd;
 }
 
+// getUnitAtk函数已移至skills.js，避免重复定义
+
 // 获取单位实际ATK（含buff）
-function getUnitAtk(unit) {
+function getUnitAtkDisplay(unit) {
   let atk = unit.atk;
   
   // 固定值加成
@@ -182,10 +191,103 @@ function getUnitAtk(unit) {
   
   // 召唤物的buff
   if (unit.isSummon && unit.buffs) {
-    atk = Math.floor(atk * (1 + (unit.buffs.atkPercent || 0) / 100));
+    if (unit.buffs.atkPercent > 0) {
+      atk = Math.floor(atk * (1 + unit.buffs.atkPercent / 100));
+    }
   }
   
   return atk;
+}
+
+// 获取单位实际DEF（含buff/debuff）
+function getUnitDefDisplay(unit) {
+  let def = unit.def;
+  
+  // DEF debuff（护盾破碎时为0）
+  if (unit.shieldBroken) {
+    return 0;
+  }
+  
+  return def;
+}
+
+// 获取单位的buff/debuff显示文本
+function getUnitBuffDebuffText(unit) {
+  const buffs = [];
+  const debuffs = [];
+  
+  // ATK buff
+  if (unit.buffAtk && unit.buffAtk > 0) {
+    buffs.push(`ATK+${unit.buffAtk}`);
+  }
+  if (unit.buffAtkPercent && unit.buffAtkPercent > 0) {
+    buffs.push(`ATK+${unit.buffAtkPercent}%`);
+  }
+  
+  // SPD buff/debuff
+  if (unit.buffSpd) {
+    if (unit.buffSpd > 0) {
+      buffs.push(`SPD+${unit.buffSpd}`);
+    } else {
+      const duration = unit.spdDebuffDuration || '';
+      debuffs.push(`SPD${unit.buffSpd}${duration ? `(${duration}回合)` : ''}`);
+    }
+  }
+  
+  // 持续debuff（如SPD减速）
+  if (unit.durationDebuffs && unit.durationDebuffs.length > 0) {
+    unit.durationDebuffs.forEach(debuff => {
+      if (debuff.type === 'spd' && debuff.value) {
+        debuffs.push(`SPD${debuff.value}(${debuff.duration}回合)`);
+      }
+    });
+  }
+  
+  // 每回合回血
+  if (unit.healPerTurn && unit.healPerTurn > 0) {
+    const duration = unit.healPerTurnDuration || '';
+    buffs.push(`回血${unit.healPerTurn}%${duration ? `(${duration}回合)` : ''}`);
+  }
+  
+  // 眩晕状态
+  if (unit.stunDuration && unit.stunDuration > 0) {
+    debuffs.push(`💫眩晕(${unit.stunDuration}回合)`);
+  }
+  
+  // 护盾破碎
+  if (unit.shieldBroken) {
+    debuffs.push(`💥DEF归零`);
+  }
+  
+  // 召唤物特有buff
+  if (unit.isSummon && unit.buffs) {
+    if (unit.buffs.atkPercent > 0) buffs.push(`ATK+${unit.buffs.atkPercent}%`);
+    if (unit.buffs.spdFlat > 0) buffs.push(`SPD+${unit.buffs.spdFlat}`);
+    if (unit.buffs.healPerTurn > 0) {
+      const dur = unit.buffs.healPerTurnDuration || '';
+      buffs.push(`回血${unit.buffs.healPerTurn}%${dur ? `(${dur}回合)` : ''}`);
+    }
+    if (unit.buffs.doubleAttack) {
+      const dur = unit.buffs.doubleAttackDuration || '';
+      buffs.push(`二连击${dur ? `(${dur}回合)` : ''}`);
+    }
+    if (unit.buffs.stunOnHit) {
+      const dur = unit.buffs.stunOnHitDuration || '';
+      buffs.push(`附带眩晕${dur ? `(${dur}回合)` : ''}`);
+    }
+  }
+  
+  // 组合显示
+  let result = '';
+  if (buffs.length > 0) {
+    result += `<span class="buff-text">🔺${buffs.join(' | ')}</span>`;
+  }
+  if (debuffs.length > 0) {
+    if (result) result += ' ';
+    result += `<span class="debuff-text">🔻${debuffs.join(' | ')}</span>`;
+  }
+  
+  return result;
 }
 
 // ==================== AT条系统 ====================
@@ -571,12 +673,49 @@ function renderBattleSideInitial(containerId, units, title, isEnemy) {
       }
     }
     
+    // 获取buff显示（使用召唤物风格）
+    let buffText = '';
+    const buffList = [];
+    if (unit.buffAtk && unit.buffAtk > 0) buffList.push(`ATK+${unit.buffAtk}`);
+    if (unit.buffAtkPercent && unit.buffAtkPercent > 0) buffList.push(`ATK+${unit.buffAtkPercent}%`);
+    if (unit.buffSpd && unit.buffSpd > 0) buffList.push(`SPD+${unit.buffSpd}`);
+    if (unit.buffDef && unit.buffDef > 0) buffList.push(`DEF+${unit.buffDef}`);
+    if (unit.dodgeChance && unit.dodgeChance > 0) buffList.push(`闪避${unit.dodgeChance}%`);
+    if (unit.healPerTurn && unit.healPerTurn > 0) {
+      const dur = unit.healPerTurnDuration || '';
+      buffList.push(`回血${unit.healPerTurn}%${dur ? `(${dur}回合)` : ''}`);
+    }
+    
+    // 显示持续性buff（圣域等）
+    if (unit.durationBuffs && unit.durationBuffs.length > 0) {
+      unit.durationBuffs.forEach(buff => {
+        let statName = buff.stat === 'dodge' ? '闪避' : buff.stat.toUpperCase();
+        if (buff.stat !== 'def' && buff.stat !== 'dodge') {
+          buffList.push(`${statName}+${buff.value}(${buff.duration}回合)`);
+        }
+      });
+    }
+    
+    // debuff
+    if (unit.buffSpd && unit.buffSpd < 0) {
+      const dur = unit.spdDebuffDuration || '';
+      buffList.push(`SPD${unit.buffSpd}${dur ? `(${dur}回合)` : ''}`);
+    }
+    if (unit.stunDuration && unit.stunDuration > 0) buffList.push(`💫眩晕(${unit.stunDuration}回合)`);
+    if (unit.shieldBroken) buffList.push(`💥DEF归零`);
+    
+    if (buffList.length > 0) {
+      buffText = `<div class="summon-buffs">${buffList.join(' | ')}</div>`;
+    }
+    
     infoHtml += `
         <div class="unit-stats">
           HP:${Math.max(0, unit.currentHp)}/${unit.maxHp}
           ${!isEnemy ? ` | ⚡${unit.energy}` : ''}
+          | ATK:${getUnitAtkDisplay(unit)} | DEF:${getUnitDefDisplay(unit)} | SPD:${getUnitSpd(unit)}
           ${shieldText}
         </div>
+        ${buffText}
       </div>
     `;
     
@@ -622,9 +761,85 @@ function updateBattleSide(units, isEnemy) {
       }
     }
     
+    // 我方单位显示临时护盾
+    let tempShieldText = '';
+    if (!isEnemy && unit.tempShield && unit.tempShield > 0) {
+      tempShieldText = ` | 🔰护盾:${unit.tempShield}`;
+    }
+    
+    // 显示充能技能（如法术护盾）
+    let chargeText = '';
+    if (!isEnemy && unit.chargeSkills) {
+      const chargeInfo = [];
+      for (const [skillName, data] of Object.entries(unit.chargeSkills)) {
+        const skill = SKILL_EFFECTS[skillName];
+        if (skill && skill.maxCharges) {
+          chargeInfo.push(`${skillName.slice(0,2)}:${data.charges}/${skill.maxCharges}`);
+        }
+      }
+      if (chargeInfo.length > 0) {
+        chargeText = ` | ⚡${chargeInfo.join(' ')}`;
+      }
+    }
+    
+    // 显示圣域模式
+    let sanctuaryText = '';
+    if (!isEnemy && unit.sanctuaryMode) {
+      sanctuaryText = ' | 🌟圣域';
+    }
+    
+    // 更新完整属性显示
     const stats = div.querySelector('.unit-stats');
     if (stats) {
-      stats.innerHTML = `HP:${Math.max(0, unit.currentHp)}/${unit.maxHp}${!isEnemy ? ` | ⚡${unit.energy}` : ''}${shieldText}`;
+      stats.innerHTML = `HP:${Math.max(0, unit.currentHp)}/${unit.maxHp}${!isEnemy ? ` | ⚡${unit.energy}` : ''} | ATK:${getUnitAtkDisplay(unit)} | DEF:${getUnitDefDisplay(unit)} | SPD:${getUnitSpd(unit)}${shieldText}${tempShieldText}${chargeText}${sanctuaryText}`;
+    }
+    
+    // 更新buff显示（使用召唤物风格）
+    const buffList = [];
+    if (unit.buffAtk && unit.buffAtk > 0) buffList.push(`ATK+${unit.buffAtk}`);
+    if (unit.buffAtkPercent && unit.buffAtkPercent > 0) buffList.push(`ATK+${unit.buffAtkPercent}%`);
+    if (unit.buffSpd && unit.buffSpd > 0) buffList.push(`SPD+${unit.buffSpd}`);
+    if (unit.buffDef && unit.buffDef > 0) buffList.push(`DEF+${unit.buffDef}`);
+    if (unit.dodgeChance && unit.dodgeChance > 0) buffList.push(`闪避${unit.dodgeChance}%`);
+    if (unit.healPerTurn && unit.healPerTurn > 0) {
+      const dur = unit.healPerTurnDuration || '';
+      buffList.push(`回血${unit.healPerTurn}%${dur ? `(${dur}回合)` : ''}`);
+    }
+    
+    // 显示持续性buff（圣域等）
+    if (unit.durationBuffs && unit.durationBuffs.length > 0) {
+      unit.durationBuffs.forEach(buff => {
+        let statName = buff.stat === 'dodge' ? '闪避' : buff.stat.toUpperCase();
+        // 避免重复显示（已在上面单独显示的跳过）
+        if (buff.stat !== 'def' && buff.stat !== 'dodge') {
+          buffList.push(`${statName}+${buff.value}(${buff.duration}回合)`);
+        }
+      });
+    }
+    
+    if (unit.buffSpd && unit.buffSpd < 0) {
+      const dur = unit.spdDebuffDuration || '';
+      buffList.push(`SPD${unit.buffSpd}${dur ? `(${dur}回合)` : ''}`);
+    }
+    if (unit.stunDuration && unit.stunDuration > 0) buffList.push(`💫眩晕(${unit.stunDuration}回合)`);
+    if (unit.shieldBroken) buffList.push(`💥DEF归零`);
+    
+    let buffsDiv = div.querySelector('.summon-buffs');
+    if (buffList.length > 0) {
+      const buffText = buffList.join(' | ');
+      if (buffsDiv) {
+        buffsDiv.textContent = buffText;
+      } else {
+        const info = div.querySelector('.unit-info');
+        if (info) {
+          const newBuffDiv = document.createElement('div');
+          newBuffDiv.className = 'summon-buffs';
+          newBuffDiv.textContent = buffText;
+          info.appendChild(newBuffDiv);
+        }
+      }
+    } else if (buffsDiv) {
+      buffsDiv.remove();
     }
   });
 }
@@ -656,7 +871,10 @@ function showSkillButtons(unit) {
     }
     
     // 召唤物没有能量限制，普攻不消耗能量
-    const canUse = unit.isSummon ? true : (unit.energy >= actualCost);
+    // 同时检查充能技能是否有充能
+    const chargeOK = typeof canUseChargeSkill === 'function' ? 
+      canUseChargeSkill(unit, skillName) : true;
+    const canUse = unit.isSummon ? true : (unit.energy >= actualCost && chargeOK);
     
     const btn = document.createElement('button');
     btn.className = `skill-btn ${canUse ? '' : 'disabled'} ${isLeaderBoosted ? 'leader-boosted' : ''}`;
@@ -825,6 +1043,11 @@ function executePlayerSkill(skill, target) {
     // 消耗和获得能量
     user.energy -= actualCost;
     user.energy = Math.min(user.maxEnergy, user.energy + skill.gain);
+    
+    // 消耗充能技能的充能
+    if (typeof consumeCharge === 'function') {
+      consumeCharge(user, skill.name);
+    }
   }
   
   // 清空UI
@@ -857,10 +1080,37 @@ function executePlayerSkill(skill, target) {
   // 检查死亡
   checkDeaths();
   
+  // ====== 回合结束处理：buff持续时间递减 ======
+  processUnitTurnEnd(user);
+  
   // 进入下一回合
   renderBattle();
   battle.currentTurn++;
   setTimeout(() => nextTurn(), 1000);
+}
+
+// 处理单位回合结束（buff持续时间递减）
+function processUnitTurnEnd(unit) {
+  // 召唤物的buff持续时间递减
+  if (unit.isSummon && typeof SummonSystem !== 'undefined') {
+    const result = SummonSystem.onSummonTurnEnd(unit);
+    if (result && result.expiredBuffs && result.expiredBuffs.length > 0) {
+      result.expiredBuffs.forEach(buff => {
+        addBattleLog(`  → 🔮${unit.name} 的${buff.name}效果结束！`, 'system');
+      });
+    }
+  }
+  
+  // 干员的healPerTurn持续时间递减
+  if (!unit.isEnemy && !unit.isSummon) {
+    if (unit.healPerTurnDuration && unit.healPerTurnDuration > 0) {
+      unit.healPerTurnDuration--;
+      if (unit.healPerTurnDuration <= 0) {
+        unit.healPerTurn = 0;
+        addBattleLog(`  → ${unit.name} 的每回合回血效果结束！`, 'system');
+      }
+    }
+  }
 }
 
 // 处理技能执行结果
@@ -981,6 +1231,32 @@ function nextTurn() {
     return;
   }
   
+  // ====== 干员每回合回血处理（生态耦合等技能） ======
+  if (!current.isEnemy && !current.isSummon && current.healPerTurn && current.healPerTurn > 0) {
+    const healAmount = Math.floor(current.maxHp * current.healPerTurn / 100);
+    const oldHp = current.currentHp;
+    current.currentHp = Math.min(current.maxHp, current.currentHp + healAmount);
+    const actualHeal = current.currentHp - oldHp;
+    
+    if (actualHeal > 0) {
+      addBattleLog(`  💚 ${current.name} 回复 ${actualHeal} HP！`, 'heal');
+    }
+    
+    // 注意：持续时间递减已移至回合结束时处理（executePlayerSkill中）
+  }
+  
+  // ====== 处理充能技能（夜莺法术护盾等） ======
+  if (!current.isEnemy && !current.isSummon && typeof processChargeSkills === 'function') {
+    const chargeLogs = processChargeSkills(current);
+    chargeLogs.forEach(log => addBattleLog(log.text, log.type));
+  }
+  
+  // ====== 处理持续buff（圣域DEF/闪避等） ======
+  if (!current.isEnemy && !current.isSummon && typeof processDurationBuffs === 'function') {
+    const buffLogs = processDurationBuffs(current);
+    buffLogs.forEach(log => addBattleLog(log.text, log.type));
+  }
+  
   // ====== 召唤物回合开始处理 ======
   if (current.isSummon) {
     // 处理召唤物回合开始效果（如回血）
@@ -1048,6 +1324,12 @@ function enemyTurn(enemy) {
     const affixResult = { logs: [] };
     processAffixTurnStart(enemy, affixResult);
     affixResult.logs.forEach(log => addBattleLog(log.text, log.type));
+  }
+  
+  // ====== 处理敌人身上的持续debuff ======
+  if (typeof processDurationDebuffs === 'function' && enemy.durationDebuffs && enemy.durationDebuffs.length > 0) {
+    const debuffLogs = processDurationDebuffs(enemy);
+    debuffLogs.forEach(log => addBattleLog(log.text, log.type));
   }
   
   // 合并所有我方目标（干员+召唤物）
@@ -1121,9 +1403,13 @@ function endBattle(victory) {
     showModal('🎉 战斗胜利！', `
       <p>金币 +${rewards.gold}</p>
       <p>抽卡券 +${rewards.tickets}</p>
-    `);
+      <button class="btn btn-primary" onclick="closeModal(); closeBattleField();">确定</button>
+    `, false);
   } else {
-    showModal('💀 战斗失败', '<p>队伍全灭，请重整旗鼓！</p>');
+    showModal('💀 战斗失败', `
+      <p>队伍全灭，请重整旗鼓！</p>
+      <button class="btn btn-primary" onclick="closeModal(); closeBattleField();">确定</button>
+    `, false);
   }
 }
 

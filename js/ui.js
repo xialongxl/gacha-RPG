@@ -134,10 +134,17 @@ function createSpinePlayer(containerId, spineData) {
     const cacheKey = spineData.skel;
     
     if (spineDataCache.has(cacheKey)) {
-      // 直接使用缓存的SpineData
+      // 检查缓存是否仍然有效
       const cachedSpineData = spineDataCache.get(cacheKey);
-      createSpineFromData(app, cachedSpineData, containerId, spineData.animation, containerWidth, containerHeight);
-      return true;
+      if (isSpineDataValid(cachedSpineData)) {
+        // 直接使用缓存的SpineData
+        createSpineFromData(app, cachedSpineData, containerId, spineData.animation, containerWidth, containerHeight, cacheKey);
+        return true;
+      } else {
+        // 缓存已失效，移除并重新加载
+        console.log('SpineData缓存已失效，重新加载:', cacheKey);
+        spineDataCache.delete(cacheKey);
+      }
     }
     
     // 首次加载资源
@@ -160,6 +167,13 @@ function createSpinePlayer(containerId, spineData) {
         
         // 创建Spine动画对象
         const spineAnim = new PIXI.spine.Spine(spineResource.spineData);
+        
+        // 验证spine对象是否有效
+        if (!spineAnim.skeleton || !spineAnim.spineData) {
+          console.warn('Spine对象无效:', containerId);
+          showPlaceholder(containerId);
+          return;
+        }
         
         // 尝试播放动画
         const targetAnim = spineData.animation || 'Idle';
@@ -185,6 +199,14 @@ function createSpinePlayer(containerId, spineData) {
         
         // 计算缩放比例使spine适应容器
         const bounds = spineAnim.getLocalBounds();
+        
+        // 验证bounds是否有效
+        if (!bounds || !isFinite(bounds.width) || !isFinite(bounds.height) || bounds.width === 0 || bounds.height === 0) {
+          console.warn('Spine bounds无效:', containerId, bounds);
+          showPlaceholder(containerId);
+          return;
+        }
+        
         const spineWidth = bounds.width;
         const spineHeight = bounds.height;
         
@@ -205,16 +227,18 @@ function createSpinePlayer(containerId, spineData) {
         spineAnim.x = containerWidth / 2 - boundsCenter.x;
         spineAnim.y = containerHeight / 2 - boundsCenter.y;
         
-        // 添加到舞台
-        app.stage.addChild(spineAnim);
-        
-        // 保存实例
-        spineInstances.set(containerId, { app, spine: spineAnim });
-        
-        console.log('Pixi Spine加载成功:', containerId, {
-          animation: animToPlay,
-          scale: scale.toFixed(3),
-          bounds: { w: spineWidth.toFixed(0), h: spineHeight.toFixed(0) }
+        // 延迟一帧添加到舞台，确保纹理资源完全就绪
+        requestAnimationFrame(() => {
+          // 再次检查app是否仍然有效（可能在这期间被销毁）
+          if (app && app.stage && !app._destroyed) {
+            app.stage.addChild(spineAnim);
+            spineInstances.set(containerId, { app, spine: spineAnim });
+            console.log('Pixi Spine加载成功:', containerId, {
+              animation: animToPlay,
+              scale: scale.toFixed(3),
+              bounds: { w: spineWidth.toFixed(0), h: spineHeight.toFixed(0) }
+            });
+          }
         });
         
       } catch (e) {
@@ -236,10 +260,60 @@ function createSpinePlayer(containerId, spineData) {
   return true;
 }
 
-// 从缓存的SpineData创建Spine（用于重复使用同一角色资源）
-function createSpineFromData(app, cachedSpineData, containerId, animation, containerWidth, containerHeight) {
+// 验证缓存的SpineData是否仍然有效（纹理未被销毁）
+function isSpineDataValid(spineData) {
   try {
+    // 检查spineData基本结构
+    if (!spineData || !spineData.skins || !spineData.skins.length) {
+      return false;
+    }
+    // 检查第一个skin的attachments中的纹理是否有效
+    const firstSkin = spineData.skins[0];
+    if (firstSkin && firstSkin.attachments) {
+      for (const slotName in firstSkin.attachments) {
+        const slotAttachments = firstSkin.attachments[slotName];
+        for (const attachName in slotAttachments) {
+          const attach = slotAttachments[attachName];
+          // 检查region类型的attachment
+          if (attach && attach.region) {
+            if (attach.region.texture && attach.region.texture.baseTexture) {
+              // 检查baseTexture是否有效
+              if (!attach.region.texture.baseTexture.valid) {
+                return false;
+              }
+            }
+          }
+        }
+      }
+    }
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// 从缓存的SpineData创建Spine（用于重复使用同一干员资源）
+function createSpineFromData(app, cachedSpineData, containerId, animation, containerWidth, containerHeight, spineDataPath) {
+  try {
+    // 先验证缓存的SpineData纹理是否仍然有效
+    if (!isSpineDataValid(cachedSpineData)) {
+      console.warn('缓存的SpineData纹理已失效，需要重新加载:', containerId);
+      // 从缓存中移除无效数据
+      if (spineDataPath) {
+        spineDataCache.delete(spineDataPath);
+      }
+      showPlaceholder(containerId);
+      return;
+    }
+    
     const spineAnim = new PIXI.spine.Spine(cachedSpineData);
+    
+    // 验证spine对象是否有效
+    if (!spineAnim.skeleton || !spineAnim.spineData) {
+      console.warn('Spine对象无效:', containerId);
+      showPlaceholder(containerId);
+      return;
+    }
     
     // 播放动画
     const targetAnim = animation || 'Idle';
@@ -261,6 +335,14 @@ function createSpineFromData(app, cachedSpineData, containerId, animation, conta
     
     // 计算缩放
     const bounds = spineAnim.getLocalBounds();
+    
+    // 验证bounds是否有效
+    if (!bounds || !isFinite(bounds.width) || !isFinite(bounds.height) || bounds.width === 0 || bounds.height === 0) {
+      console.warn('Spine bounds无效:', containerId, bounds);
+      showPlaceholder(containerId);
+      return;
+    }
+    
     const scaleX = (containerWidth * 0.85) / bounds.width;
     const scaleY = (containerHeight * 0.85) / bounds.height;
     const scale = Math.min(scaleX, scaleY);
@@ -274,12 +356,21 @@ function createSpineFromData(app, cachedSpineData, containerId, animation, conta
     spineAnim.x = containerWidth / 2 - boundsCenter.x;
     spineAnim.y = containerHeight / 2 - boundsCenter.y;
     
-    app.stage.addChild(spineAnim);
-    spineInstances.set(containerId, { app, spine: spineAnim });
-    
-    console.log('Spine从缓存加载:', containerId);
+    // 延迟一帧添加到舞台，确保纹理资源完全就绪
+    requestAnimationFrame(() => {
+      // 再次检查app是否仍然有效（可能在这期间被销毁）
+      if (app && app.stage && !app._destroyed) {
+        app.stage.addChild(spineAnim);
+        spineInstances.set(containerId, { app, spine: spineAnim });
+        console.log('Spine从缓存加载:', containerId);
+      }
+    });
   } catch (e) {
     console.error('从缓存创建Spine失败:', containerId, e);
+    // 缓存可能已损坏，清除它
+    if (spineDataPath) {
+      spineDataCache.delete(spineDataPath);
+    }
     showPlaceholder(containerId);
   }
 }
@@ -292,7 +383,7 @@ function showPlaceholder(containerId) {
   }
 }
 
-// 生成Spine角色（队伍槽位和战斗界面用）
+// 生成Spine干员（队伍槽位和战斗界面用）
 function createSpineMedia(charData, charName, className, width, height) {
   width = width || 125;
   height = height || 160;
@@ -304,17 +395,27 @@ function createSpineMedia(charData, charName, className, width, height) {
     // 延迟加载，等DOM渲染完成
     setTimeout(() => {
       const container = document.getElementById(containerId);
-      if (container && container.children.length === 0) {
-        // 清理旧实例（如果有）
-        if (spineInstances.has(containerId)) {
-          const oldInstance = spineInstances.get(containerId);
-          if (oldInstance && oldInstance.app) {
-            try {
-              oldInstance.app.destroy(true);
-            } catch (e) {}
-          }
-          spineInstances.delete(containerId);
+      if (!container) return;
+      
+      // 先检查并清理旧实例
+      if (spineInstances.has(containerId)) {
+        const oldInstance = spineInstances.get(containerId);
+        if (oldInstance && oldInstance.app) {
+          try {
+            oldInstance.app.destroy(true);
+          } catch (e) {}
         }
+        spineInstances.delete(containerId);
+        container.innerHTML = '';  // 清空容器
+      }
+      
+      // 如果容器已经有子元素但没有对应的spine实例，说明是残留DOM，清理掉
+      if (container.children.length > 0 && !spineInstances.has(containerId)) {
+        container.innerHTML = '';
+      }
+      
+      // 现在容器应该是空的了，创建新的Spine
+      if (container.children.length === 0) {
         createSpinePlayer(containerId, charData.spine);
       }
     }, 50);
@@ -388,7 +489,7 @@ function showGachaResult(results) {
   const container = document.getElementById('gacha-result');
   container.innerHTML = '';
   
-  // 收集6星角色，播放演出
+  // 收集6星干员，播放演出
   const sixStarResults = results.filter(r => r.rarity === 6);
   sixStarResults.forEach(r => {
     if (typeof queueCutscene === 'function') {
@@ -442,7 +543,7 @@ function showModal(title, content, showDefaultBtn = true) {
 // 关闭模态框
 function closeModal() {
   document.getElementById('result-modal').classList.remove('active');
-  closeBattleField();
+  // 不再自动调用closeBattleField()，由调用方决定是否关闭战斗界面
 }
 
 // 关闭战斗界面
@@ -454,6 +555,14 @@ function closeBattleField() {
   
   // 清理战斗界面的Spine实例
   clearSpineInstances('spine-unit-spine-');
+  
+  // 清除队伍渲染缓存，确保返回队伍页面时重新渲染Spine
+  if (typeof clearTeamRenderCache === 'function') {
+    clearTeamRenderCache();
+  }
+  
+  // 同时清理队伍槽位的Spine实例，确保完全重新加载
+  clearSpineInstances('spine-slot-spine-');
 }
 
 // 添加战斗日志
@@ -578,4 +687,45 @@ function toggleSummonSideMinimize() {
       btn.textContent = container.classList.contains('minimized') ? '+' : '−';
     }
   }
+}
+
+// ==================== 滚动条自动隐藏功能 ====================
+// 初始化滚动区域的自动隐藏滚动条
+function initAutoHideScrollbar(selector, hideDelay = 1000) {
+  const elements = document.querySelectorAll(selector);
+  elements.forEach(el => {
+    let scrollTimer = null;
+    
+    el.addEventListener('scroll', () => {
+      // 滚动时显示滚动条
+      el.classList.add('scrolling');
+      
+      // 清除之前的定时器
+      if (scrollTimer) clearTimeout(scrollTimer);
+      
+      // 设置新的定时器，停止滚动后隐藏
+      scrollTimer = setTimeout(() => {
+        el.classList.remove('scrolling');
+      }, hideDelay);
+    });
+  });
+}
+
+// 初始化存档管理器滚动条
+function initSaveManagerScrollbar() {
+  // 使用MutationObserver监听模态框显示
+  const modal = document.getElementById('result-modal');
+  if (!modal) return;
+  
+  const observer = new MutationObserver(() => {
+    if (modal.classList.contains('active')) {
+      const saveManager = modal.querySelector('.save-manager');
+      if (saveManager && !saveManager.dataset.scrollInit) {
+        saveManager.dataset.scrollInit = 'true';
+        initAutoHideScrollbar('.save-manager', 800);
+      }
+    }
+  });
+  
+  observer.observe(modal, { attributes: true, attributeFilter: ['class'] });
 }

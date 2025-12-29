@@ -1,14 +1,29 @@
 // ==================== 深度学习AI系统 ====================
 
-// 初始化数据库 - V2加入词缀支持
+// 初始化数据库 - V3加入训练数据版本追踪
 const SmartAI_DB = new Dexie('SmartAI_Database');
+
+// V2: 词缀支持
 SmartAI_DB.version(2).stores({
-  // 战斗记录
   battles: '++id, timestamp, result, totalTurns, playerTeam, floor',
-  // 训练数据（每个回合的状态和玩家行动）
   trainingData: '++id, battleId, turn, state, action, result',
-  // 模型参数
   modelParams: 'id, weights, updatedAt, version'
+});
+
+// V3: 训练数据增加版本字段，用于精确版本控制
+SmartAI_DB.version(3).stores({
+  battles: '++id, timestamp, result, totalTurns, playerTeam, floor, dataVersion',
+  trainingData: '++id, battleId, turn, state, action, result, dataVersion',
+  modelParams: 'id, weights, updatedAt, version'
+}).upgrade(tx => {
+  // 升级时给现有数据添加版本号（假设是V3之前的数据，标记为V3以便保留）
+  // 因为用户可能刚用V4收集了数据，不能随便删除
+  return tx.table('trainingData').toCollection().modify(data => {
+    if (data.dataVersion === undefined) {
+      // 无法确定版本，标记为0表示需要检查
+      data.dataVersion = 0;
+    }
+  });
 });
 
 // 词缀列表（用于特征编码）
@@ -24,6 +39,9 @@ const BUFF_LIST = [
   // special类型
   'critUp', 'vampUp', 'shield', 'extraLife'
 ];
+
+// 持续效果类型列表（用于特征编码）
+const DEBUFF_STAT_LIST = ['atk', 'def', 'spd'];
 
 // ==================== 核心AI对象 ====================
 
@@ -70,14 +88,72 @@ const SmartAI = {
   // 检查模型版本，清除不兼容的旧数据
   async checkModelVersion() {
     const saved = await SmartAI_DB.modelParams.get('main');
-    if (!saved) return;  // 没有旧模型，无需检查
     
-    const savedVersion = saved.version || 1;
-    if (savedVersion < this.MODEL_VERSION) {
-      console.log(`⚠️ 检测到旧版本模型 (V${savedVersion} → V${this.MODEL_VERSION})`);
-      console.log('🔄 特征维度已更新，自动清除旧数据...');
-      await this.clearAllData();
-      console.log('✅ 旧数据已清除，请重新进行无尽模式战斗以收集新数据！');
+    // 1. 检查保存的模型版本
+    if (saved) {
+      const savedVersion = saved.version || 1;
+      if (savedVersion < this.MODEL_VERSION) {
+        console.log(`⚠️ 检测到旧版本模型 (V${savedVersion} → V${this.MODEL_VERSION})`);
+        console.log('🔄 特征维度已更新，自动清除旧数据...');
+        await this.clearAllData();
+        console.log('✅ 旧数据已清除，请重新进行无尽模式战斗以收集新数据！');
+        return;
+      }
+    }
+    
+    // 2. 精确检查训练数据版本（基于 dataVersion 字段）
+    // 查找版本低于当前版本的旧数据
+    const oldTrainingData = await SmartAI_DB.trainingData
+      .filter(data => {
+        const version = data.dataVersion;
+        // dataVersion 为 undefined、null、0 或小于当前版本的数据都是旧数据
+        return version === undefined || version === null || version === 0 || version < this.MODEL_VERSION;
+      })
+      .count();
+    
+    if (oldTrainingData > 0) {
+      console.log(`⚠️ 检测到 ${oldTrainingData} 条旧版本训练数据 (V<${this.MODEL_VERSION})，正在清除...`);
+      
+      // 只删除旧版本数据，保留当前版本数据
+      await SmartAI_DB.trainingData
+        .filter(data => {
+          const version = data.dataVersion;
+          return version === undefined || version === null || version === 0 || version < this.MODEL_VERSION;
+        })
+        .delete();
+      
+      // 同时清除对应的旧战斗记录
+      const oldBattles = await SmartAI_DB.battles
+        .filter(battle => {
+          const version = battle.dataVersion;
+          return version === undefined || version === null || version === 0 || version < this.MODEL_VERSION;
+        })
+        .count();
+      
+      if (oldBattles > 0) {
+        await SmartAI_DB.battles
+          .filter(battle => {
+            const version = battle.dataVersion;
+            return version === undefined || version === null || version === 0 || version < this.MODEL_VERSION;
+          })
+          .delete();
+        console.log(`🗑️ 已清除 ${oldBattles} 条旧版本战斗记录`);
+      }
+      
+      // 如果模型是基于旧数据训练的，也需要清除
+      if (saved && (saved.version || 1) < this.MODEL_VERSION) {
+        await SmartAI_DB.modelParams.delete('main');
+        this.model = null;
+        this.isModelReady = false;
+        console.log('🗑️ 已清除旧版本模型');
+      }
+      
+      console.log('✅ 旧数据清除完成！当前版本数据已保留。');
+      
+      // 统计剩余数据
+      const remainingData = await SmartAI_DB.trainingData.count();
+      const remainingBattles = await SmartAI_DB.battles.count();
+      console.log(`📊 剩余数据: ${remainingBattles} 场战斗, ${remainingData} 条训练数据`);
     }
   },
   
@@ -89,12 +165,13 @@ const SmartAI = {
       timestamp: Date.now(),
       result: null,
       totalTurns: 0,
-      playerTeam: playerTeam.map(p => p.name)
+      playerTeam: playerTeam.map(p => p.name),
+      dataVersion: this.MODEL_VERSION  // 记录数据版本
     };
     
     this.currentBattleId = await SmartAI_DB.battles.add(battle);
     this.currentTurn = 0;
-    console.log(`🎮 开始记录战斗 #${this.currentBattleId}`);
+    console.log(`🎮 开始记录战斗 #${this.currentBattleId} (V${this.MODEL_VERSION})`);
   },
   
   // 记录玩家行动
@@ -108,7 +185,8 @@ const SmartAI = {
       turn: this.currentTurn,
       state: this.extractFeatures(battleState),
       action: this.encodeAction(action),
-      result: null // 战斗结束时回填
+      result: null, // 战斗结束时回填
+      dataVersion: this.MODEL_VERSION  // 记录数据版本
     };
     
     await SmartAI_DB.trainingData.add(record);
@@ -151,17 +229,20 @@ const SmartAI = {
   
   // ==================== 特征提取 ====================
   
-  // 提取战场状态特征（V3: 包含词缀信息 + 玩家Roguelike强化）
+  // 提取战场状态特征（V4: 增加buff/debuff状态信息）
   extractFeatures(battleState) {
     const features = [];
     
-    // 我方单位特征（最多4个干员 + 4个召唤物）= 8 * 7 = 56
+    // 我方单位特征（最多4个干员 + 4个召唤物）
+    // V4: 每个单位 7基础 + 4buff状态 = 11个特征
+    // 8 * 11 = 88
     const maxAllies = 8;
     const allies = [...(battleState.allies || []), ...(battleState.summons || [])];
     
     for (let i = 0; i < maxAllies; i++) {
       const unit = allies[i];
       if (unit && unit.currentHp > 0) {
+        // 基础属性 (7个)
         features.push(
           unit.currentHp / unit.maxHp,                    // HP%
           (unit.energy || 0) / (unit.maxEnergy || 100),   // 能量%
@@ -171,12 +252,25 @@ const SmartAI = {
           unit.isSummon ? 1 : 0,                          // 是否召唤物
           unit.stunDuration > 0 ? 1 : 0                   // 是否眩晕
         );
+        
+        // V4新增: buff状态 (4个)
+        features.push(
+          (unit.buffAtk || 0) / 500,                      // 固定ATK加成
+          (unit.buffAtkPercent || 0),                     // 百分比ATK加成
+          (unit.buffDef || 0) / 100,                      // 固定DEF加成
+          (unit.skillUseCount || 0) / 10                  // 技能使用次数(二重咏唱)
+        );
       } else {
-        features.push(0, 0, 0, 0, 0, 0, 0);  // 空位或死亡
+        // 空位或死亡：7基础 + 4buff = 11个零
+        for (let j = 0; j < 11; j++) {
+          features.push(0);
+        }
       }
     }
     
-    // 敌方单位特征（最多4个）= 4 * (7 + 13词缀) = 4 * 20 = 80
+    // 敌方单位特征（最多4个）
+    // V4: 每个单位 7基础 + 13词缀 + 3持续debuff = 23个特征
+    // 4 * 23 = 92
     const maxEnemies = 4;
     const enemies = battleState.enemies || [];
     
@@ -199,9 +293,16 @@ const SmartAI = {
         for (const affixName of AFFIX_LIST) {
           features.push(unitAffixes.includes(affixName) ? 1 : 0);
         }
+        
+        // V4新增: 持续debuff状态 (3个，对应atk/def/spd减益)
+        const debuffs = unit.durationDebuffs || [];
+        for (const stat of DEBUFF_STAT_LIST) {
+          const hasDebuff = debuffs.some(d => d.stat === stat);
+          features.push(hasDebuff ? 1 : 0);
+        }
       } else {
-        // 空位或死亡：7个基础 + 13个词缀 = 20个零
-        for (let j = 0; j < 20; j++) {
+        // 空位或死亡：7基础 + 13词缀 + 3持续debuff = 23个零
+        for (let j = 0; j < 23; j++) {
           features.push(0);
         }
       }
@@ -225,13 +326,13 @@ const SmartAI = {
     // 无尽模式层数 (1个)
     features.push((battleState.floor || 0) / 100);
     
-    // V3新增: 玩家Roguelike强化特征 (8个)
+    // V3: 玩家Roguelike强化特征 (8个)
     const playerBuffs = battleState.playerBuffs || [];
     for (const buffKey of BUFF_LIST) {
       features.push(playerBuffs.includes(buffKey) ? 1 : 0);
     }
     
-    // 总特征数: 56 + 80 + 3 + 1 + 1 + 8 = 149
+    // V4总特征数: 88(我方) + 92(敌方) + 3(当前) + 1(回合) + 1(层数) + 8(强化) = 193
     return features;
   },
   
@@ -248,12 +349,12 @@ const SmartAI = {
   // ==================== 神经网络模型 ====================
   
   // 模型版本（特征维度变化时需要更新）
-  MODEL_VERSION: 3,
+  MODEL_VERSION: 4,
   
-  // 创建模型 (V3: 包含词缀特征 + 玩家Roguelike强化)
+  // 创建模型 (V4: 增加buff/debuff状态信息)
   createModel() {
-    // V3特征维度: 56(我方) + 80(敌方含词缀) + 3(当前单位) + 1(回合) + 1(层数) + 8(玩家强化) = 149
-    const inputSize = 8 * 7 + 4 * 20 + 3 + 1 + 1 + 8;  // 149个特征
+    // V4特征维度: 88(我方含buff) + 92(敌方含词缀+debuff) + 3(当前) + 1(回合) + 1(层数) + 8(强化) = 193
+    const inputSize = 8 * 11 + 4 * 23 + 3 + 1 + 1 + 8;  // 193个特征
     
     const model = {
       inputSize: inputSize,

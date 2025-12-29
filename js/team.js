@@ -71,7 +71,7 @@ function renderTeamSlots() {
   });
 }
 
-// 渲染角色列表（显示干员数据）
+// 渲染干员列表（显示干员数据）
 function renderCharacterList() {
   const listDiv = document.getElementById('char-list');
   listDiv.innerHTML = '';
@@ -132,7 +132,7 @@ function renderCharacterList() {
   });
   
   if (sorted.length === 0) {
-    listDiv.innerHTML = '<div style="color:#aaa;padding:20px;">还没有角色，去抽卡吧！</div>';
+    listDiv.innerHTML = '<div style="color:#aaa;padding:20px;">还没有干员，去抽卡吧！</div>';
   }
 }
 
@@ -151,7 +151,7 @@ function selectSlot(index) {
   renderTeamSlots();
 }
 
-// 分配角色到槽位
+// 分配干员到槽位
 function assignToSlot(charName) {
   if (selectedSlot === null) {
     alert('请先点击上方的队伍槽位');

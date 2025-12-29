@@ -39,7 +39,7 @@ const DEFAULT_STATE = {
   endlessCoin: 0,           // 无尽币
   skinTickets: 0,           // 时装券
   ownedSkins: [],           // 已拥有的时装ID列表
-  equippedSkins: {}         // 已装备的时装 { 角色ID: 时装ID }
+  equippedSkins: {}         // 已装备的时装 { 干员ID: 时装ID }
 };
 
 // 当前游戏状态
@@ -113,7 +113,7 @@ async function migrateFromLocalStorage() {
   try {
     const parsed = JSON.parse(oldData);
     
-    // 数据迁移：确保所有角色都有 potential 字段
+    // 数据迁移：确保所有干员都有 potential 字段
     if (parsed.inventory) {
       Object.keys(parsed.inventory).forEach(name => {
         if (!parsed.inventory[name].potential) {
@@ -155,7 +155,7 @@ async function loadState(slotId = 'auto') {
       state = { ...DEFAULT_STATE, ...save.data };
       currentSaveSlot = slotId;
       
-      // 数据迁移：确保所有角色都有 potential 字段
+      // 数据迁移：确保所有干员都有 potential 字段
       Object.keys(state.inventory).forEach(name => {
         if (!state.inventory[name].potential) {
           state.inventory[name].potential = 1;
@@ -240,12 +240,32 @@ async function createNewSave(name) {
 }
 
 /**
- * 导出存档为JSON
+ * 导出当前存档为JSON
  * 用于备份
  * 
  * @returns {string} JSON字符串
  */
 async function exportSave() {
+  const currentSave = await GameDB.saves.get(currentSaveSlot);
+  if (!currentSave) {
+    throw new Error('当前存档不存在');
+  }
+  
+  const exportData = {
+    version: 1,
+    exportTime: Date.now(),
+    saves: [currentSave]  // 只导出当前存档
+  };
+  return JSON.stringify(exportData, null, 2);
+}
+
+/**
+ * 导出所有存档为JSON
+ * 用于完整备份
+ * 
+ * @returns {string} JSON字符串
+ */
+async function exportAllSaves() {
   const saves = await GameDB.saves.toArray();
   const exportData = {
     version: 1,

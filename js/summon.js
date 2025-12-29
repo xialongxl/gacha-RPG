@@ -53,9 +53,9 @@ const SummonSystem = {
     return team.filter(char => this.isSummoner(char));
   },
   
-  // 判断角色是否是召唤师
+  // 判断干员是否是召唤师
   isSummoner(char) {
-    // 根据角色数据中的 summoner 标记判断
+    // 根据干员数据中的 summoner 标记判断
     return char.isSummoner === true;
   },
   
@@ -325,13 +325,18 @@ const SummonSystem = {
   },
   
   // 给召唤者自己也加buff（技能同时影响召唤者）
-  addBuffToOwner(owner, buffType, value) {
+  addBuffToOwner(owner, buffType, value, duration = 0) {
     switch (buffType) {
       case 'atkPercent':
         owner.buffAtkPercent = (owner.buffAtkPercent || 0) + value;
         break;
       case 'spdFlat':
         owner.buffSpd = (owner.buffSpd || 0) + value;
+        break;
+      case 'healPerTurn':
+        // 每回合回血效果（使用持续时间）
+        owner.healPerTurn = value;
+        if (duration > 0) owner.healPerTurnDuration = duration;
         break;
     }
   },
@@ -350,7 +355,7 @@ const SummonSystem = {
   
   // 召唤物回合开始时处理（回血等）
   onSummonTurnStart(summon) {
-    const result = { healed: 0, expiredBuffs: [] };
+    const result = { healed: 0 };
     
     // 每回合回血
     if (summon.buffs.healPerTurn > 0) {
@@ -360,7 +365,16 @@ const SummonSystem = {
       result.healed = summon.currentHp - oldHp;
     }
     
-    // 处理buff持续时间
+    // 注意：buff持续时间递减已移至 onSummonTurnEnd
+    
+    return result;
+  },
+  
+  // 召唤物回合结束时处理（buff持续时间递减）
+  onSummonTurnEnd(summon) {
+    const result = { expiredBuffs: [] };
+    
+    // 处理buff持续时间（回合结束后再递减）
     result.expiredBuffs = this.processSummonBuffDurations(summon);
     
     return result;

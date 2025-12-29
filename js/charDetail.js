@@ -1,6 +1,6 @@
 // ==================== 干员详情系统 ====================
 
-// 当前查看的角色
+// 当前查看的干员
 let currentDetailChar = null;
 
 // 显示干员详情
@@ -42,11 +42,15 @@ function showCharDetail(charName) {
     artImg.src = artSrc;
     artImg.style.display = 'block';
     
-    // 应用偏移到wrapper容器
+  // 应用偏移到wrapper容器（使用CSS变量，配合CSS的transition实现平滑过渡）
     if (artOffset) {
-      artWrapper.style.transform = `translate3d(${artOffset.x}px, ${artOffset.y}px, ${artOffset.z}px)`;
+      artWrapper.style.setProperty('--skin-offset-x', `${artOffset.x}px`);
+      artWrapper.style.setProperty('--skin-offset-y', `${artOffset.y}px`);
+      artWrapper.style.setProperty('--skin-offset-z', `${artOffset.z}px`);
     } else {
-      artWrapper.style.transform = 'translate3d(0, 0, 0)';
+      artWrapper.style.setProperty('--skin-offset-x', '0px');
+      artWrapper.style.setProperty('--skin-offset-y', '0px');
+      artWrapper.style.setProperty('--skin-offset-z', '0px');
     }
   } else {
     artImg.style.display = 'none';
@@ -213,7 +217,7 @@ function renderSkinList() {
   const skins = SkinSystem.getCharSkins(charId);  // 已包含owned属性
   const currentSkinId = SkinSystem.getEquippedSkin(charId);
   
-  // 获取角色立绘路径
+  // 获取干员立绘路径
   //const defaultArt = data.art || '';
   const defaultSkinhead = `assets/skinhead/${charId}_skin0.png`|| '';
   
@@ -325,11 +329,15 @@ function refreshCharDetailArt() {
     artImg.src = artSrc;
     artImg.style.display = 'block';
     
-    // 应用偏移到wrapper容器
+    // 应用偏移到wrapper容器（使用CSS变量，配合CSS的transition实现平滑过渡）
     if (artOffset) {
-      artWrapper.style.transform = `translate3d(${artOffset.x}px, ${artOffset.y}px, ${artOffset.z}px)`;
+      artWrapper.style.setProperty('--skin-offset-x', `${artOffset.x}px`);
+      artWrapper.style.setProperty('--skin-offset-y', `${artOffset.y}px`);
+      artWrapper.style.setProperty('--skin-offset-z', `${artOffset.z}px`);
     } else {
-      artWrapper.style.transform = 'translate3d(0, 0, 0)';
+      artWrapper.style.setProperty('--skin-offset-x', '0px');
+      artWrapper.style.setProperty('--skin-offset-y', '0px');
+      artWrapper.style.setProperty('--skin-offset-z', '0px');
     }
   }
 }

@@ -72,7 +72,7 @@ const ShopSystem = {
       owned: state.ownedSkins?.includes(id) || false
     }));
     
-    // 按角色分组
+    // 按干员分组
     const groupedByChar = {};
     allSkins.forEach(skin => {
       if (!groupedByChar[skin.charId]) {
@@ -84,7 +84,7 @@ const ShopSystem = {
     let html = '';
     
     for (const [charId, skins] of Object.entries(groupedByChar)) {
-      // 获取角色名（CHARACTER_DATA的key是角色名，value.id是角色ID）
+      // 获取干员名（CHARACTER_DATA的key是干员名，value.id是干员ID）
       let charName = charId;
       if (typeof CHARACTER_DATA !== 'undefined') {
         for (const [name, char] of Object.entries(CHARACTER_DATA)) {

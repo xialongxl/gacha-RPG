@@ -44,6 +44,11 @@ async function init() {
     // 播放主界面BGM
     AudioManager.playBGM('main');
     
+    // 初始化存档管理器滚动条（滚动时显示，停止后隐藏）
+    if (typeof initSaveManagerScrollbar === 'function') {
+      initSaveManagerScrollbar();
+    }
+    
     console.log('✅ 游戏初始化完成！');
   } catch (error) {
     console.error('❌ 游戏初始化失败:', error);

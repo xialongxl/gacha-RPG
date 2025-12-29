@@ -25,7 +25,7 @@ function pull() {
     rarity = 3;
   }
 
-  // 从对应稀有度池中随机选角色
+  // 从对应稀有度池中随机选干员
   const pool = Object.entries(CHARACTER_DATA).filter(([_, d]) => d.rarity === rarity);
   const [charName] = pool[Math.floor(Math.random() * pool.length)];
 
@@ -33,7 +33,7 @@ function pull() {
   if (state.inventory[charName]) {
     // 已有该干员 - 确保 potential 有默认值
     const currentPotential = state.inventory[charName].potential || 1;
-    if (currentPotential < 12) {
+    if (currentPotential < 13) {
       state.inventory[charName].potential = currentPotential + 1;
     } else {
       // 满潜转金币

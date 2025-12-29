@@ -56,7 +56,7 @@ const SKIN_DATA = {
 // ==================== 时装系统 ====================
 const SkinSystem = {
   
-  // 获取角色可用时装列表
+  // 获取干员可用时装列表
   getCharSkins(charId) {
     const skins = [];
     for (const [skinId, data] of Object.entries(SKIN_DATA)) {
@@ -131,12 +131,12 @@ const SkinSystem = {
     return { success: true, message: `已装备：${skin.name}` };
   },
   
-  // 获取角色当前装备的时装ID
+  // 获取干员当前装备的时装ID
   getEquippedSkin(charId) {
     return state.equippedSkins?.[charId] || null;
   },
   
-  // 获取角色当前使用的Spine路径（含时装）
+  // 获取干员当前使用的Spine路径（含时装）
   getCurrentSpine(charId, defaultSpine) {
     const equippedSkinId = this.getEquippedSkin(charId);
     if (!equippedSkinId) {
@@ -151,7 +151,7 @@ const SkinSystem = {
     return defaultSpine;  // 时装没有资源，使用默认
   },
   
-  // 获取角色当前使用的立绘路径（含时装）
+  // 获取干员当前使用的立绘路径（含时装）
   getSkinArt(charId) {
     const equippedSkinId = this.getEquippedSkin(charId);
     if (!equippedSkinId) {
@@ -166,7 +166,7 @@ const SkinSystem = {
     return null;  // 时装没有立绘资源，使用默认
   },
   
-  // 获取角色当前使用的立绘偏移（含时装）
+  // 获取干员当前使用的立绘偏移（含时装）
   getSkinArtOffset(charId) {
     const equippedSkinId = this.getEquippedSkin(charId);
     if (!equippedSkinId) {
@@ -181,9 +181,9 @@ const SkinSystem = {
     return null;  // 时装没有偏移配置，使用默认
   },
   
-  // ==================== UI（角色详情页时装切换） ====================
+  // ==================== UI（干员详情页时装切换） ====================
   
-  // 显示角色时装切换界面 - PRTS风格
+  // 显示干员时装切换界面 - PRTS风格
   showCharSkinPanel(charId) {
     const skins = this.getCharSkins(charId);
     const charData = Object.values(CHARACTER_DATA).find(c => c.id === charId);

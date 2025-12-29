@@ -11,7 +11,6 @@ const EndlessMode = {
   
   // 配置
   config: {
-    SMART_AI_START_FLOOR: 20,      // 第20层开始使用深度学习AI
     BOSS_INTERVAL: 10,              // 每10层BOSS
     ENEMY_SCALE_PER_FLOOR: 0.05,    // 每层敌人属性+5%
     REWARD_SCALE_PER_FLOOR: 0.03,   // 每层奖励+3%
@@ -123,8 +122,8 @@ const EndlessMode = {
     // 生成敌人
     const enemies = this.generateEnemies();
     
-    // 判断是否使用SmartAI
-    const useSmartAI = this.currentFloor >= this.config.SMART_AI_START_FLOOR;
+    // 判断是否使用SmartAI（只要模型训练好了，从第1层就用）
+    const useSmartAI = typeof SmartAI !== 'undefined' && SmartAI.isModelReady;
     
     // 创建关卡数据
     const stage = {
@@ -773,6 +772,11 @@ const EndlessMode = {
   async end(victory) {
     this.active = false;
     
+    // 清理召唤系统
+    if (typeof SummonSystem !== 'undefined') {
+      SummonSystem.clear();
+    }
+    
     // 计算无尽币
     let endlessCoinEarned = 0;
     if (victory) {
@@ -1001,7 +1005,7 @@ function showEndlessMode() {
       <div class="endless-info">
         <p>📊 历史最高: 第 <b>${stats.maxFloorReached}</b> 层</p>
         <p>⚔️ 每10层出现BOSS</p>
-        <p>🧠 第20层后AI开始学习你的战术</p>
+        <p>🧠 AI训练完成后，将全程使用深度学习决策</p>
         <p>⚠️ 失败将失去所有累计奖励</p>
       </div>
       ${aiStatus}

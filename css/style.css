@@ -151,7 +151,7 @@ body {
 
 /* ==================== 星级样式 ==================== */
 
-/* 角色卡片边框和背景 */
+/* 干员卡片边框和背景 */
 .char-item.star-6 {
   border: 2px solid #ff6b00;
   background: linear-gradient(135deg, #ff6b00, #ff9500);
@@ -208,7 +208,7 @@ body {
   text-shadow: 0 1px 2px rgba(0,0,0,0.5);
 }
 
-/* 角色名字 */
+/* 干员名字 */
 .char-item .char-name {
   color: #fff;
   text-shadow: 0 1px 2px rgba(0,0,0,0.5);
@@ -528,7 +528,7 @@ body {
   filter: grayscale(30%);
 }
 
-/* 角色模型 - 透明背景 */
+/* 干员模型 - 透明背景 */
 .battle-unit video,
 .battle-unit .unit-video {
   width: 80px;
@@ -626,6 +626,25 @@ body {
   font-size: 11px;
   color: #bbb;
   margin-top: 4px;
+}
+
+/* 战斗单位buff/debuff显示 */
+.battle-unit .unit-buffs {
+  font-size: 10px;
+  margin-top: 5px;
+  padding: 4px 6px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  line-height: 1.5;
+}
+
+.battle-unit .unit-buffs .buff-text {
+  color: #90ee90;
+  margin-right: 5px;
+}
+
+.battle-unit .unit-buffs .debuff-text {
+  color: #ff7b7b;
 }
 
 /* ==================== 战斗日志 - 可拖拽悬浮窗 ==================== */
@@ -1007,7 +1026,7 @@ body {
   margin-top: 3px;
 }
 
-/* ==================== 角色列表样式 ==================== */
+/* ==================== 干员列表样式 ==================== */
 .char-item {
   width: 130px;
   min-height: 120px;
@@ -1871,7 +1890,6 @@ body {
   width: 100%;
   height: 100%;
   z-index: 2000;
-  cursor: pointer;
   background-color: rgba(0, 0, 0, 0.8);
   justify-content: center;
   align-items: center;
@@ -1905,14 +1923,29 @@ body {
   object-fit: cover;
 }
 
-/* 立绘包裹容器 - 负责偏移定位 */
+/* 立绘包裹容器 - 负责偏移定位（使用CSS变量实现平滑过渡） */
 .char-detail-art-wrapper {
   position: absolute;
   width: 1024px;
   height: 1024px;
   z-index: 0;
-  transition: transform 0.3s ease;  /* 切换时装时平滑过渡 */
   pointer-events: none;  /* 让点击事件穿透，不遮挡按钮 */
+  /* 使用CSS变量，允许JS设置时装偏移，同时CSS控制时装模式偏移 */
+  --skin-offset-x: 0px;
+  --skin-offset-y: 0px;
+  --skin-offset-z: 0px;
+  --mode-offset-x: 0px;
+  transform: translate3d(
+    calc(var(--skin-offset-x) + var(--mode-offset-x)),
+    var(--skin-offset-y),
+    var(--skin-offset-z)
+  );
+  transition: transform 0.35s ease;  /* 平滑过渡 */
+}
+
+/* 时装模式 - 额外左移150px */
+.char-detail-container.skin-mode .char-detail-art-wrapper {
+  --mode-offset-x: -150px;
 }
 
 /* 立绘 - 只负责浮动动画 */
@@ -2642,8 +2675,28 @@ body {
 
 .save-manager {
   max-height: 400px;
-  overflow-y: auto;
+  overflow-y: overlay;  /* overlay滚动条，不占用内容空间 */
   padding: 10px 0;
+}
+
+/* 存档管理滚动条 - 默认隐藏，滚动时显示 */
+.save-manager::-webkit-scrollbar {
+  width: 6px;
+}
+
+.save-manager::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.save-manager::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+  transition: background 0.3s ease;
+}
+
+/* 正在滚动时显示滚动条（通过JS添加.scrolling类） */
+.save-manager.scrolling::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(102,126,234,0.5) 0%, rgba(118,75,162,0.5) 100%);
 }
 
 .save-list {
@@ -3196,18 +3249,6 @@ body {
   display: none;
 }
 
-.char-detail-container.skin-mode .char-detail-art {
-  /* 立绘左靠 - 使用transform而不是left，因为原始样式用transform定位 */
-  transform: translate3d(-150px, 0px, 0px);
-  transition: transform 0.3s ease;
-  animation: skinModeFloat 3s ease-in-out infinite;
-}
-
-/* 时装模式专用动画 - 保持左移位置 */
-@keyframes skinModeFloat {
-  0%, 100% { transform: translate3d(-150px, 0px, 0px); }
-  50% { transform: translate3d(-150px, -10px, 0px); }
-}
 
 
 /* 时装列表项 - PRTS风格 */
@@ -3412,7 +3453,7 @@ body {
   border-radius: 3px;
 }
 
-/* 时装角色分组 */
+/* 时装干员分组 */
 .skin-char-group {
   margin-bottom: 25px;
 }

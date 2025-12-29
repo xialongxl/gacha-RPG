@@ -53,18 +53,22 @@ function chooseEnemySkill(enemy, aliveAllies, aliveEnemies) {
   }
   
   const hpPercent = enemy.currentHp / enemy.maxHp;
-  const injuredAllies = aliveEnemies.filter(e => e.currentHp / e.maxHp < 0.5);
+  // 受伤的友军（血量低于90%）
+  const injuredAllies = aliveEnemies.filter(e => e.currentHp / e.maxHp < 0.9);
   
   // 统计目标数量（干员+召唤物）
   const totalTargets = aliveAllies.length;
   const summonCount = aliveAllies.filter(a => a.isSummon).length;
   const operatorCount = totalTargets - summonCount;
   
-  // 优先治疗
+  // 优先治疗（需要有受伤目标）
   if (injuredAllies.length > 0) {
-    if (skills.includes('群体治疗') && injuredAllies.length >= 2 && SKILL_EFFECTS['群体治疗']) {
+    // 群疗优先（2个以上受伤且血量低于50%）
+    const criticalAllies = aliveEnemies.filter(e => e.currentHp / e.maxHp < 0.5);
+    if (skills.includes('群体治疗') && criticalAllies.length >= 2 && SKILL_EFFECTS['群体治疗']) {
       return { name: '群体治疗', ...SKILL_EFFECTS['群体治疗'] };
     }
+    // 单体治疗
     if (skills.includes('战地治疗') && SKILL_EFFECTS['战地治疗']) {
       return { name: '战地治疗', ...SKILL_EFFECTS['战地治疗'] };
     }

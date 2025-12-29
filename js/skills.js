@@ -61,7 +61,7 @@ const SKILL_EFFECTS = {
       { type: 'damage', multiplier: 1.5 }
     ]
   },
-  '火山': {
+  '旧火山': {
     cost: 100,
     gain: 0,
     target: 'all',
@@ -147,7 +147,7 @@ const SKILL_EFFECTS = {
       { type: 'debuff_duration', stat: 'def', multiplier: 0.25, duration: 2 }
     ]
   },
-  '火山·真': {
+  '火山': {
     cost: 100,
     gain: 0,
     target: 'random6',
@@ -256,6 +256,51 @@ const SKILL_EFFECTS = {
     ]
   },
 
+  // ========== 夜莺专属技能 ==========
+  '医疗普攻': {
+    cost: 0,
+    gain: 30,
+    target: 'ally',
+    desc: '治疗选定的队友，恢复100%攻击力HP，获得30能量',
+    effects: [
+      { type: 'heal', multiplier: 1.0 }
+    ]
+  },
+  '治疗强化·γ型': {
+    cost: 30,
+    gain: 0,
+    target: 'self',
+    desc: '消耗30能量，自身ATK+90%（可叠加），大幅提升治疗强度',
+    effects: [
+      { type: 'buff', stat: 'atk', multiplier: 0.9 }
+    ]
+  },
+  '法术护盾': {
+    cost: 50,
+    gain: 0,
+    target: 'all_ally',
+    chargeSkill: true,      // 充能技能标记
+    maxCharges: 3,          // 最大充能层数
+    chargeInterval: 2,      // 每2回合获得1层充能
+    desc: '消耗50能量和1层充能，为全体队友施加护盾（90%ATK），DEF+20%持续3回合',
+    effects: [
+      { type: 'team_temp_shield', multiplier: 0.9 },
+      { type: 'team_buff_duration', stat: 'def', multiplier: 0.2, duration: 3 }
+    ]
+  },
+  '圣域': {
+    cost: 80,
+    gain: 0,
+    target: 'self',
+    desc: '消耗80能量，ATK+80%，普攻变为群体治疗，全体队友获得25%闪避率+DEF+50%（3回合）',
+    effects: [
+      { type: 'buff', stat: 'atk', multiplier: 0.8 },
+      { type: 'sanctuary_mode' },
+      { type: 'team_buff_duration', stat: 'dodge', value: 25, duration: 3 },
+      { type: 'team_buff_duration', stat: 'def', multiplier: 0.5, duration: 3 }
+    ]
+  },
+
   // ========== 增益技能 ==========
   '战吼': {
     cost: 50,
@@ -319,36 +364,38 @@ const SKILL_EFFECTS = {
   // ========== 缪尔赛思技能 ==========
   '渐进性润化': {
     cost: 30,
-    gain: 15,
+    gain: 0,
     target: 'self',
-    desc: '消耗30能量，全队回复15能量，自身与流形ATK+20%、SPD+10（可叠加）',
+    desc: '消耗30能量，全队回复15能量，自身与流形ATK+40%、SPD+20（可叠加）',
     effects: [
       { type: 'team_energy', amount: 15 },
-      { type: 'summon_buff', buffType: 'atkPercent', value: 20 },
-      { type: 'summon_buff', buffType: 'spdFlat', value: 10 },
-      { type: 'owner_buff', buffType: 'atkPercent', value: 20 },
-      { type: 'owner_buff', buffType: 'spdFlat', value: 10 }
+      { type: 'summon_buff', buffType: 'atkPercent', value: 40 },
+      { type: 'summon_buff', buffType: 'spdFlat', value: 20 },
+      { type: 'owner_buff', buffType: 'atkPercent', value: 40 },
+      { type: 'owner_buff', buffType: 'spdFlat', value: 20 }
     ]
   },
   '生态耦合': {
     cost: 50,
-    gain: 20,
+    gain: 0,
     target: 'self',
-    desc: '消耗50能量，全队回复20能量，流形每回合回复15%HP(5回合) + 攻击变为二连击(3回合)',
+    desc: '消耗50能量，全队回复20能量，自身与流形每回合回复15%HP(持续5回合) ，流形普攻变为二连击(持续3回合)',
     effects: [
       { type: 'team_energy', amount: 20 },
+      { type: 'owner_buff', buffType: 'healPerTurn', value: 15, duration: 5 },
       { type: 'summon_buff', buffType: 'healPerTurn', value: 15, duration: 5 },
       { type: 'summon_buff', buffType: 'doubleAttack', value: true, duration: 3 }
     ]
   },
   '浅层非熵适应': {
     cost: 70,
-    gain: 25,
+    gain: 0,
     target: 'self',
-    desc: '消耗70能量，全队回复25能量，自身ATK+30%，流形普攻附带眩晕(2回合)',
+    desc: '消耗70能量，全队回复25能量，自身与流形ATK+50%，流形普攻附带眩晕(持续2回合)',
     effects: [
       { type: 'team_energy', amount: 25 },
-      { type: 'owner_buff', buffType: 'atkPercent', value: 30 },
+      { type: 'owner_buff', buffType: 'atkPercent', value: 50 },
+      { type: 'summon_buff', buffType: 'atkPercent', value: 50 },
       { type: 'summon_buff', buffType: 'stunOnHit', value: true, duration: 2 }
     ]
   },
@@ -624,6 +671,16 @@ function executeSkillEffects(skill, user, target, isEnemy) {
         break;
       case 'self_buff_then_attack':
         executeSelfBuffThenAttack(effect, user, result);
+        break;
+      // ====== 夜莺专属效果 ======
+      case 'team_temp_shield':
+        executeTeamTempShield(effect, user, atk, isEnemy, result);
+        break;
+      case 'team_buff_duration':
+        executeTeamBuffDuration(effect, user, isEnemy, result);
+        break;
+      case 'sanctuary_mode':
+        executeSanctuaryMode(user, result);
         break;
     }
   });
@@ -927,10 +984,10 @@ function executeDamageEffect(effect, user, atk, target, effectTarget, isEnemy, r
   const effectiveAtk = Math.floor(atk * (1 + berserkBonus));
   
   // 暴击判定（玩家Roguelike强化）
-  const critBonus = user.critBonus || 0;
+  const critBonus = user.critBonus || 0;  // 小数形式，如0.15表示15%
   let isCrit = false;
   if (!isEnemy && critBonus > 0) {
-    isCrit = Math.random() * 100 < critBonus;
+    isCrit = Math.random() < critBonus;  // 直接用小数比较，0.15就是15%概率
   }
   const critMultiplier = isCrit ? 1.5 : 1.0;  // 暴击伤害 +50%
   
@@ -945,9 +1002,16 @@ function executeDamageEffect(effect, user, atk, target, effectTarget, isEnemy, r
   const enemies = isEnemy ? [...battle.allies, ...battle.summons] : battle.enemies;
   
   const applyDamage = (t) => {
-    // 处理闪避词缀
+    // 处理闪避词缀（敌人专属）
     if (processAffixDodge(t, result)) {
       return;  // 闪避成功，不造成伤害
+    }
+    
+    // 处理玩家闪避（圣域效果）
+    if (isEnemy && !t.isEnemy && typeof checkPlayerDodge === 'function') {
+      if (checkPlayerDodge(t, result)) {
+        return;  // 玩家闪避成功
+      }
     }
     
     let dmg = calcDamage(t);
@@ -998,7 +1062,7 @@ function executeDamageEffect(effect, user, atk, target, effectTarget, isEnemy, r
     
     // 处理玩家Roguelike吸血强化（非敌人使用时）
     if (!isEnemy && user.vampBonus && user.vampBonus > 0) {
-      const vampHeal = Math.floor(dmg * user.vampBonus / 100);
+      const vampHeal = Math.floor(dmg * user.vampBonus);  // 小数形式，0.10就是10%吸血
       if (vampHeal > 0) {
         const oldHp = user.currentHp;
         user.currentHp = Math.min(user.maxHp, user.currentHp + vampHeal);
@@ -1034,8 +1098,8 @@ function executeDamageEffect(effect, user, atk, target, effectTarget, isEnemy, r
       }
     }
     
-    // 召唤物攻击附带眩晕
-    if (user.isSummon && user.buffs && user.buffs.stunOnHit && !t.isEnemy === false) {
+    // 召唤物攻击附带眩晕（只对敌人生效）
+    if (user.isSummon && user.buffs && user.buffs.stunOnHit && t.isEnemy) {
       t.stunDuration = (t.stunDuration || 0) + 1;
       result.logs.push({ text: `  → ${t.name} 被眩晕 1 回合！`, type: 'system' });
     }
@@ -1150,10 +1214,21 @@ function executeHealEffect(effect, user, atk, target, effectTarget, isEnemy, res
     t.currentHp = Math.min(t.maxHp, t.currentHp + healAmt);
     const actualHeal = t.currentHp - oldHp;
     const unitPrefix = t.isSummon ? '🔮' : '';
-    result.logs.push({ text: `  → ${unitPrefix}${t.name} 恢复 ${actualHeal} HP！`, type: 'heal' });
+    if (actualHeal > 0) {
+      result.logs.push({ text: `  → ${unitPrefix}${t.name} 恢复 ${actualHeal} HP！`, type: 'heal' });
+    } else {
+      result.logs.push({ text: `  → ${unitPrefix}${t.name} 已满血！`, type: 'system' });
+    }
   };
   
-  switch (effectTarget) {
+  // 圣域模式：ally类型的治疗变为群体治疗
+  let actualTarget = effectTarget;
+  if (!isEnemy && user.sanctuaryMode && (effectTarget === 'ally')) {
+    actualTarget = 'all_ally';
+    result.logs.push({ text: `  🌟 圣域群体治疗！`, type: 'system' });
+  }
+  
+  switch (actualTarget) {
     case 'ally':
       if (target) applyHeal(target);
       break;
@@ -1164,10 +1239,17 @@ function executeHealEffect(effect, user, atk, target, effectTarget, isEnemy, res
       break;
       
     case 'ally_lowest':
-      const lowest = allies.filter(a => a.currentHp > 0).reduce((a, b) => 
-        (a.currentHp / a.maxHp) < (b.currentHp / b.maxHp) ? a : b, allies[0]
+      // 筛选存活的友军
+      const aliveAllies = allies.filter(a => a.currentHp > 0);
+      if (aliveAllies.length === 0) {
+        result.logs.push({ text: `  → 没有可治疗的目标！`, type: 'system' });
+        break;
+      }
+      // 找血量比例最低的
+      const lowest = aliveAllies.reduce((a, b) => 
+        (a.currentHp / a.maxHp) < (b.currentHp / b.maxHp) ? a : b
       );
-      if (lowest && lowest.currentHp > 0) applyHeal(lowest);
+      applyHeal(lowest);
       break;
   }
 }
@@ -1193,7 +1275,8 @@ function executeBuffEffect(effect, user, atk, effectTarget, isEnemy, result) {
         result.logs.push({ text: `  → ${unitPrefix}${t.name} ATK +${buffValue}！`, type: 'system' });
         break;
       case 'spd':
-        t.spd += buffValue;
+        // 使用buffSpd字段，以便在UI中显示
+        t.buffSpd = (t.buffSpd || 0) + buffValue;
         result.logs.push({ text: `  → ${unitPrefix}${t.name} SPD +${buffValue}！`, type: 'system' });
         break;
       case 'def':
@@ -1264,17 +1347,15 @@ function executeStunEffect(effect, target, effectTarget, isEnemy, result) {
 // ==================== 召唤系统相关效果 ====================
 
 /**
- * 全队回复能量（先锋供能）
+ * 全队回复能量（先锋供能，包含自身）
  */
 function executeTeamEnergyEffect(effect, user, isEnemy, result) {
   if (isEnemy) return;  // 敌人不使用此效果
   
   const amount = effect.amount || 0;
   
+  // 给全队（包含自身）回复能量
   battle.allies.filter(a => a.currentHp > 0).forEach(ally => {
-    // 不给自己回能量（已经通过技能消耗/获得处理）
-    if (ally === user) return;
-    
     ally.energy = Math.min(ally.maxEnergy, ally.energy + amount);
   });
   
@@ -1322,24 +1403,29 @@ function executeSummonBuffEffect(effect, user, result) {
 }
 
 /**
- * 给召唤者自己添加buff
+ * 给召唤者自己添加buff（支持持续时间）
  */
 function executeOwnerBuffEffect(effect, user, result) {
   if (typeof SummonSystem === 'undefined') return;
   
   const buffType = effect.buffType;
   const value = effect.value;
+  const duration = effect.duration || 0;  // 获取持续时间
   
-  SummonSystem.addBuffToOwner(user, buffType, value);
+  SummonSystem.addBuffToOwner(user, buffType, value, duration);
   
   // 日志
   let buffText = '';
+  let durationText = duration > 0 ? `（${duration}回合）` : '';
   switch (buffType) {
     case 'atkPercent':
       buffText = `ATK +${value}%`;
       break;
     case 'spdFlat':
       buffText = `SPD +${value}`;
+      break;
+    case 'healPerTurn':
+      buffText = `每回合回血 ${value}%${durationText}`;
       break;
   }
   result.logs.push({ text: `  → ${user.name} ${buffText}！`, type: 'system' });
@@ -1405,7 +1491,12 @@ function executeDebuffDuration(effect, target, result) {
   const applyDebuffToUnit = (t) => {
     if (!t || t.currentHp <= 0) return;
     
-    const debuffValue = Math.floor(t[effect.stat] * effect.multiplier);
+    // 使用原始属性值计算debuff（避免护盾破碎后DEF为0的问题）
+    let baseValue = t[effect.stat];
+    if (effect.stat === 'def' && t.originalDef !== undefined) {
+      baseValue = t.originalDef;  // 使用护盾破碎前的原始DEF
+    }
+    const debuffValue = Math.floor(baseValue * effect.multiplier);
     
     // 初始化持续debuff列表
     if (!t.durationDebuffs) t.durationDebuffs = [];
@@ -1457,7 +1548,7 @@ function executeDebuffDuration(effect, target, result) {
 }
 
 /**
- * 自我增益后攻击（火山·真）
+ * 自我增益后攻击（火山）
  */
 function executeSelfBuffThenAttack(effect, user, result) {
   const atkBonus = effect.atkBonus || 1.3;
@@ -1510,4 +1601,218 @@ function processDurationDebuffs(unit) {
   });
   
   return logs;
+}
+
+// ==================== 夜莺专属效果 ====================
+
+/**
+ * 给全体队友施加临时护盾（法术护盾）
+ */
+function executeTeamTempShield(effect, user, atk, isEnemy, result) {
+  if (isEnemy) return;
+  
+  const shieldValue = Math.floor(atk * effect.multiplier);
+  const allies = [...battle.allies, ...battle.summons].filter(a => a.currentHp > 0);
+  
+  allies.forEach(ally => {
+    ally.tempShield = (ally.tempShield || 0) + shieldValue;
+  });
+  
+  result.logs.push({ 
+    text: `  → 🛡️ 全体队友获得护盾（${shieldValue}点）！`, 
+    type: 'system' 
+  });
+}
+
+/**
+ * 给全体队友施加持续性buff（DEF、闪避等）
+ */
+function executeTeamBuffDuration(effect, user, isEnemy, result) {
+  if (isEnemy) return;
+  
+  const allies = [...battle.allies, ...battle.summons].filter(a => a.currentHp > 0);
+  
+  allies.forEach(ally => {
+    // 初始化持续buff列表
+    if (!ally.durationBuffs) ally.durationBuffs = [];
+    
+    let buffValue;
+    if (effect.value) {
+      buffValue = effect.value;
+    } else if (effect.multiplier) {
+      buffValue = Math.floor(ally[effect.stat] * effect.multiplier);
+    }
+    
+    // 添加持续buff
+    ally.durationBuffs.push({
+      stat: effect.stat,
+      value: buffValue,
+      duration: effect.duration
+    });
+    
+    // 立即应用buff
+    switch (effect.stat) {
+      case 'def':
+        ally.buffDef = (ally.buffDef || 0) + buffValue;
+        ally.def += buffValue;
+        break;
+      case 'dodge':
+        ally.dodgeChance = (ally.dodgeChance || 0) + buffValue;
+        break;
+    }
+  });
+  
+  // 日志
+  let statText = effect.stat === 'dodge' ? '闪避率' : effect.stat.toUpperCase();
+  let valueText = effect.value ? `${effect.value}%` : `+${Math.floor(effect.multiplier * 100)}%`;
+  result.logs.push({ 
+    text: `  → 🌟 全体队友 ${statText} ${valueText}（${effect.duration}回合）！`, 
+    type: 'system' 
+  });
+}
+
+/**
+ * 激活圣域模式（普攻变为群体治疗）
+ */
+function executeSanctuaryMode(user, result) {
+  user.sanctuaryMode = true;
+  result.logs.push({ 
+    text: `  → 🌟 圣域展开！${user.name}的普攻变为群体治疗！`, 
+    type: 'system' 
+  });
+}
+
+/**
+ * 处理持续buff的回合结束
+ */
+function processDurationBuffs(unit) {
+  if (!unit.durationBuffs || unit.durationBuffs.length === 0) return [];
+  
+  const logs = [];
+  const expiredBuffs = [];
+  
+  unit.durationBuffs.forEach((buff, index) => {
+    buff.duration--;
+    
+    if (buff.duration <= 0) {
+      // buff到期，移除效果
+      switch (buff.stat) {
+        case 'def':
+          unit.def -= buff.value;
+          unit.buffDef = (unit.buffDef || 0) - buff.value;
+          break;
+        case 'dodge':
+          unit.dodgeChance = (unit.dodgeChance || 0) - buff.value;
+          break;
+      }
+      logs.push({ 
+        text: `  → ${unit.name} 的${buff.stat === 'dodge' ? '闪避' : buff.stat.toUpperCase()}增益效果结束！`, 
+        type: 'system' 
+      });
+      expiredBuffs.push(index);
+    }
+  });
+  
+  // 移除到期的buff
+  expiredBuffs.reverse().forEach(index => {
+    unit.durationBuffs.splice(index, 1);
+  });
+  
+  return logs;
+}
+
+/**
+ * 检查玩家单位闪避（圣域效果）
+ * 在伤害计算前调用
+ */
+function checkPlayerDodge(target, result) {
+  if (!target.dodgeChance || target.dodgeChance <= 0) return false;
+  
+  const roll = Math.random() * 100;
+  if (roll < target.dodgeChance) {
+    result.logs.push({ 
+      text: `  💫 ${target.name} 闪避了攻击！（圣域效果）`, 
+      type: 'system' 
+    });
+    return true;
+  }
+  return false;
+}
+
+/**
+ * 处理充能技能的回合充能
+ */
+function processChargeSkills(unit) {
+  if (!unit.chargeSkills) return [];
+  
+  const logs = [];
+  
+  for (const [skillName, chargeData] of Object.entries(unit.chargeSkills)) {
+    const skill = SKILL_EFFECTS[skillName];
+    if (!skill || !skill.chargeSkill) continue;
+    
+    // 增加回合计数
+    chargeData.turnCount = (chargeData.turnCount || 0) + 1;
+    
+    // 检查是否达到充能间隔
+    if (chargeData.turnCount >= skill.chargeInterval) {
+      if (chargeData.charges < skill.maxCharges) {
+        chargeData.charges++;
+        chargeData.turnCount = 0;
+        logs.push({ 
+          text: `  ⚡ ${unit.name}「${skillName}」充能 +1（${chargeData.charges}/${skill.maxCharges}）`, 
+          type: 'system' 
+        });
+      }
+    }
+  }
+  
+  return logs;
+}
+
+/**
+ * 初始化充能技能
+ */
+function initChargeSkills(unit) {
+  if (!unit.skills) return;
+  
+  unit.chargeSkills = {};
+  
+  unit.skills.forEach(skillName => {
+    const skill = SKILL_EFFECTS[skillName];
+    if (skill && skill.chargeSkill) {
+      unit.chargeSkills[skillName] = {
+        charges: 0,
+        turnCount: 0
+      };
+    }
+  });
+}
+
+/**
+ * 检查充能技能是否可用
+ */
+function canUseChargeSkill(unit, skillName) {
+  const skill = SKILL_EFFECTS[skillName];
+  if (!skill || !skill.chargeSkill) return true;  // 非充能技能直接返回true
+  
+  if (!unit.chargeSkills || !unit.chargeSkills[skillName]) {
+    initChargeSkills(unit);
+  }
+  
+  return unit.chargeSkills[skillName].charges > 0;
+}
+
+/**
+ * 消耗充能技能的充能
+ */
+function consumeCharge(unit, skillName) {
+  if (!unit.chargeSkills || !unit.chargeSkills[skillName]) return;
+  
+  const skill = SKILL_EFFECTS[skillName];
+  if (!skill || !skill.chargeSkill) return;
+  
+  if (unit.chargeSkills[skillName].charges > 0) {
+    unit.chargeSkills[skillName].charges--;
+  }
 }

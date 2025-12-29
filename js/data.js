@@ -1,4 +1,4 @@
-// ==================== 自动填充角色资源路径 ====================
+// ==================== 自动填充干员资源路径 ====================
 
 function processCharacterData(data) {
   const processed = {};
@@ -24,7 +24,7 @@ function processCharacterData(data) {
   return processed;
 }
 
-// ==================== 角色原始数据 ====================
+// ==================== 干员原始数据 ====================
 
 const CHARACTER_DATA_RAW = {
   // ========== 6星 ==========
@@ -65,7 +65,7 @@ const CHARACTER_DATA_RAW = {
     atk: 220, 
     def: 40, 
     spd: 80, 
-    skills: ['普攻', '二重咏唱', '点燃', '火山·真'],
+    skills: ['普攻', '二重咏唱', '点燃', '火山'],
     voiceText: ''
   },
   '凯尔希': { 
@@ -98,6 +98,17 @@ const CHARACTER_DATA_RAW = {
     summoner: true,
     skills: ['普攻', '渐进性润化', '生态耦合', '浅层非熵适应'],
     voiceText: '莱茵生命，生态科主任，缪尔赛思。不过我们之间应该不需要这么正式的问候吧，博士。毕竟，我们早就是朋友了。'
+  },
+    '夜莺': { 
+    id: 'char_179_cgbird',
+    rarity: 6, 
+    hp: 750, 
+    atk: 180, 
+    def: 40, 
+    spd: 80, 
+    healer: true,  // 医疗干员：普攻改为治疗
+    skills: ['医疗普攻', '治疗强化·γ型', '法术护盾', '圣域'],
+    voiceText: '丽兹，这是我真正的名字。除此之外的事情，我都不记得了......'
   },
 
   // ========== 5星 ==========
@@ -257,7 +268,7 @@ const CHARACTER_DATA_RAW = {
   }
 };
 
-// 处理后的角色数据
+// 处理后的干员数据
 const CHARACTER_DATA = processCharacterData(CHARACTER_DATA_RAW);
 
 // ==================== 关卡数据 ====================
