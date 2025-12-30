@@ -1,11 +1,13 @@
 // ==================== 抽卡演出系统 ====================
 
+import { CHARACTER_DATA } from './data.js';
+
 // 演出队列
 let cutsceneQueue = [];
 let isCutscenePlaying = false;
 
 // 播放6星演出
-function playCutscene(charName) {
+export function playCutscene(charName) {
   const data = CHARACTER_DATA[charName];
   if (!data) return;
   
@@ -62,7 +64,7 @@ function playCutscene(charName) {
 }
 
 // 关闭演出
-function closeCutscene() {
+export function closeCutscene() {
   const modal = document.getElementById('ssr-cutscene');
   const voiceWrapper = document.getElementById('charvoice-wrapper');
   const voice = document.getElementById('cutscene-voice');
@@ -83,7 +85,7 @@ function closeCutscene() {
 }
 
 // 添加到队列
-function queueCutscene(charName) {
+export function queueCutscene(charName) {
   if (isCutscenePlaying) {
     cutsceneQueue.push(charName);
   } else {
@@ -92,11 +94,12 @@ function queueCutscene(charName) {
 }
 
 // 点击关闭
-document.addEventListener('DOMContentLoaded', () => {
+// 导出初始化函数供 main.js 调用
+export function initCutscene() {
   const modal = document.getElementById('ssr-cutscene');
   if (modal) {
     modal.addEventListener('click', () => {
       closeCutscene();
     });
   }
-});
+}

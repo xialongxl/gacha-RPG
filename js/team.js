@@ -1,29 +1,46 @@
 // ==================== 队伍系统 ====================
 
+import { state, store } from './state.js';
+import { CHARACTER_DATA } from './data.js';
+import { CONFIG, applyPotentialBonus } from './config.js';
+import { createSpineMedia } from './ui.js';
+import { showCharDetail } from './charDetail.js';
+import { SkinSystem } from './skin.js';
+import { LEADER_BONUS } from './skills.js';
+
 // 记录上次渲染的队伍状态
 let lastRenderedTeam = null;
+// 当前选中的槽位
+let selectedSlot = null;
 
 // 清除队伍渲染缓存（供外部调用）
-function clearTeamRenderCache() {
+export function clearTeamRenderCache() {
   lastRenderedTeam = null;
 }
 
 // 更新队伍UI
-function updateTeamUI() {
+export function updateTeamUI() {
   renderTeamSlots();
   renderCharacterList();
 }
 
+// 记录上次选中的槽位（用于缓存检查）
+let lastSelectedSlot = null;
+
 // 渲染队伍槽位（用Spine）
 function renderTeamSlots() {
   const slotsDiv = document.getElementById('team-slots');
+  if (!slotsDiv) return;
   
-  // 检查队伍是否有变化
+  // 检查队伍和选中状态是否有变化
   const currentTeam = JSON.stringify(state.team);
-  if (lastRenderedTeam === currentTeam && slotsDiv.children.length > 0) {
+  const slotChanged = lastSelectedSlot !== selectedSlot;
+  
+  if (lastRenderedTeam === currentTeam && !slotChanged && slotsDiv.children.length > 0) {
     return;
   }
   lastRenderedTeam = currentTeam;
+  lastSelectedSlot = selectedSlot;
   
   slotsDiv.innerHTML = '';
   
@@ -38,13 +55,13 @@ function renderTeamSlots() {
       const stars = '★'.repeat(data.rarity);
       
       // 获取时装spine（如果有）
-      const spineData = data.id && typeof SkinSystem !== 'undefined' 
+      const spineData = data.id && SkinSystem 
         ? SkinSystem.getCurrentSpine(data.id, data.spine) 
         : data.spine;
       const renderData = { ...data, spine: spineData };
       const mediaHtml = createSpineMedia(renderData, charName, 'slot-spine', 125, 160);
       
-      const hasLeaderSkill = typeof LEADER_BONUS !== 'undefined' && LEADER_BONUS[charName];
+      const hasLeaderSkill = LEADER_BONUS && LEADER_BONUS[charName];
       const leaderBadge = isLeader ? '<div class="leader-badge">👑队长</div>' : '';
       const leaderSkillInfo = isLeader && hasLeaderSkill ? `<div class="leader-skill-info">队长技：${LEADER_BONUS[charName].skill}强化</div>` : '';
       
@@ -74,6 +91,7 @@ function renderTeamSlots() {
 // 渲染干员列表（显示干员数据）
 function renderCharacterList() {
   const listDiv = document.getElementById('char-list');
+  if (!listDiv) return;
   listDiv.innerHTML = '';
   
   // 按星级排序（高到低）
@@ -89,11 +107,13 @@ function renderCharacterList() {
     const bonus = Math.round((potential - 1) * CONFIG.POTENTIAL_BONUS_PER_LEVEL * 100);
     const stars = '★'.repeat(data.rarity);
     
-    const hasLeaderSkill = typeof LEADER_BONUS !== 'undefined' && LEADER_BONUS[name];
+    const hasLeaderSkill = LEADER_BONUS && LEADER_BONUS[name];
     const leaderIcon = hasLeaderSkill ? '👑' : '';
     
     const item = document.createElement('div');
-    item.className = `char-item star-${data.rarity}`;
+    // 如果有槽位选中，添加 can-assign 类
+    const canAssignClass = selectedSlot !== null ? ' can-assign' : '';
+    item.className = `char-item star-${data.rarity}${canAssignClass}`;
     
     item.innerHTML = `
       <div class="char-header">
@@ -113,19 +133,23 @@ function renderCharacterList() {
       ${hasLeaderSkill ? `<div class="char-leader-hint">可作为队长</div>` : ''}
     `;
     
-    // 单击查看详情
-    // 左键查看详情
+    // 左键：槽位选中时编队，否则查看详情
     item.onclick = (e) => {
       e.stopPropagation();
-      showCharDetail(name);
+      if (selectedSlot !== null) {
+        // 有槽位选中，直接编队
+        assignToSlot(name);
+      } else {
+        // 没有槽位选中，查看详情
+        showCharDetail(name);
+      }
     };
 
-    // 右键编队
+    // 右键：智能快速编队
     item.oncontextmenu = (e) => {
-      e.preventDefault(); // 阻止默认右键菜单
+      e.preventDefault();
       e.stopPropagation();
-      assignToSlot(name);
-      
+      quickAssign(name);
     };
     
     listDiv.appendChild(item);
@@ -137,36 +161,104 @@ function renderCharacterList() {
 }
 
 // 选择槽位
-function selectSlot(index) {
+export function selectSlot(index) {
   if (selectedSlot === index) {
+    // 再次点击已选中的槽位：清空该槽位的干员
     if (state.team[index]) {
-      state.team[index] = null;
+      store.setTeamMember(index, null);
       lastRenderedTeam = null;
-      saveState();
     }
     selectedSlot = null;
   } else {
+    // 切换到新槽位
     selectedSlot = index;
   }
-  renderTeamSlots();
+  updateTeamUI(); // 更新整个UI以刷新干员列表的 can-assign 状态
 }
 
-// 分配干员到槽位
-function assignToSlot(charName) {
+// 取消槽位选择
+export function cancelSlotSelection() {
+  if (selectedSlot !== null) {
+    selectedSlot = null;
+    updateTeamUI();
+  }
+}
+
+// 分配干员到槽位（用于左键编队）
+export function assignToSlot(charName) {
   if (selectedSlot === null) {
-    alert('请先点击上方的队伍槽位');
     return;
   }
   
+  // 如果干员已在队伍中，先移除
   const existingIndex = state.team.indexOf(charName);
   if (existingIndex !== -1) {
-    state.team[existingIndex] = null;
+    store.setTeamMember(existingIndex, null);
   }
   
-  state.team[selectedSlot] = charName;
-  selectedSlot = null;
+  store.setTeamMember(selectedSlot, charName);
+  selectedSlot = null; // 编队后取消选择
   lastRenderedTeam = null;
   
   updateTeamUI();
-  saveState();
 }
+
+// 智能快速编队（右键）
+export function quickAssign(charName) {
+  // 检查干员是否已在队伍中
+  const existingIndex = state.team.indexOf(charName);
+  if (existingIndex !== -1) {
+    alert(`${charName} 已在队伍中（位置${existingIndex + 1}）`);
+    return;
+  }
+  
+  // 查找第一个空槽位
+  const emptySlot = state.team.findIndex(slot => slot === null);
+  
+  if (emptySlot !== -1) {
+    // 有空槽位，自动编入
+    store.setTeamMember(emptySlot, charName);
+    lastRenderedTeam = null;
+    updateTeamUI();
+  } else {
+    // 没有空槽位，提示选择替换位置
+    alert('队伍已满，请先点击槽位选择替换位置');
+    // 可选：自动选中第一个槽位
+    // selectedSlot = 0;
+    // updateTeamUI();
+  }
+}
+
+// 初始化队伍页面的点击事件（取消槽位选择）及滚动条控制
+export function initTeamPageEvents() {
+  const teamPage = document.getElementById('page-team');
+  if (teamPage) {
+    teamPage.addEventListener('click', (e) => {
+      // 如果点击的不是槽位或干员卡片，则取消选择
+      if (!e.target.closest('.team-slot') && !e.target.closest('.char-item')) {
+        cancelSlotSelection();
+      }
+    });
+
+    // 滚动条隐藏逻辑（仿存档窗口）
+    let scrollTimeout;
+    teamPage.addEventListener('scroll', () => {
+      teamPage.classList.add('scrolling');
+      
+      if (scrollTimeout) {
+        clearTimeout(scrollTimeout);
+      }
+      
+      scrollTimeout = setTimeout(() => {
+        teamPage.classList.remove('scrolling');
+      }, 1000); // 停止滚动1秒后隐藏
+    });
+  }
+}
+
+// 页面加载时初始化 (Moved to main.js or init function)
+// if (document.readyState === 'loading') {
+//   document.addEventListener('DOMContentLoaded', initTeamPageEvents);
+// } else {
+//   initTeamPageEvents();
+// }

@@ -15,6 +15,20 @@
 //
 // ========================================================================
 
+import { initSaveSystem, currentSaveSlot, getSaveList, loadState, deleteSave, createNewSave, exportSave, importSave } from './state.js';
+import { updateResourceUI, showPage, showModal, closeModal, initSaveManagerScrollbar } from './ui.js';
+import { dailyLogin, gachaSingle, gachaTen } from './gacha.js';
+import { fleeBattle } from './battle.js';
+import { showEndlessMode, initEndlessMode } from './endless_and_smartAI/endless.js';
+import { AudioManager, BGMPlayer, toggleBGMPlayer } from './audio.js';
+import { SmartAI } from './endless_and_smartAI/smartAI.js';
+import './team.js'; // Ensure team.js runs for window bindings
+import './exchange.js'; // Ensure exchange.js runs for window bindings
+import './charDetail.js'; // Ensure charDetail.js runs for window bindings
+import './shop.js'; // Ensure shop.js runs for window bindings
+import { initShopPageObserver } from './shop.js';
+import { initCutscene } from './cutscene.js';
+
 /**
  * 初始化游戏
  * 异步函数，等待存档系统加载完成
@@ -25,6 +39,18 @@ async function init() {
   try {
     // 初始化存档系统（异步）
     await initSaveSystem();
+
+    // 初始化SmartAI
+    SmartAI.init().catch(err => console.error('SmartAI 初始化失败:', err));
+
+    // 初始化无尽模式
+    initEndlessMode();
+
+    // 初始化Cutscene
+    initCutscene();
+
+    // 初始化商店页面观察器
+    initShopPageObserver();
     
     // 更新UI
     updateResourceUI();
@@ -41,6 +67,9 @@ async function init() {
     // 绑定其他事件
     bindOtherEvents();
     
+    // 初始化BGM播放器
+    BGMPlayer.init();
+
     // 播放主界面BGM
     AudioManager.playBGM('main');
     
@@ -252,6 +281,17 @@ function importSaveFromFile() {
   
   input.click();
 }
+
+// 绑定到 window 以支持 HTML 中的 onclick 调用
+window.loadSaveSlot = loadSaveSlot;
+window.deleteSaveSlot = deleteSaveSlot;
+window.createNewSaveSlot = createNewSaveSlot;
+window.exportSaveToFile = exportSaveToFile;
+window.importSaveFromFile = importSaveFromFile;
+
+// 绑定音频控制到 window
+window.BGMPlayer = BGMPlayer;
+window.toggleBGMPlayer = toggleBGMPlayer;
 
 // ==================== DOM加载完成后初始化 ====================
 

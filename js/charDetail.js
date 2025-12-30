@@ -1,10 +1,18 @@
 // ==================== 干员详情系统 ====================
 
+import { CHARACTER_DATA, applyPotentialBonus } from './data.js';
+import { state } from './state.js';
+import { CONFIG } from './config.js';
+import { SKILL_EFFECTS, LEADER_BONUS } from './skills.js';
+import { SkinSystem } from './skin.js';
+import { showModal, clearSpineInstances } from './ui.js';
+import { clearTeamRenderCache, updateTeamUI } from './team.js';
+
 // 当前查看的干员
 let currentDetailChar = null;
 
 // 显示干员详情
-function showCharDetail(charName) {
+export function showCharDetail(charName) {
   currentDetailChar = charName;
   const data = CHARACTER_DATA[charName];
   if (!data) return;
@@ -150,12 +158,12 @@ function showCharDetail(charName) {
 }
 
 // 关闭干员详情
-function closeCharDetail() {
+export function closeCharDetail() {
   document.getElementById('char-detail-modal').classList.remove('active');
 }
 
 // 切换面板展开/折叠
-function toggleDetailSection(barElement) {
+export function toggleDetailSection(barElement) {
   event.stopPropagation(); // 阻止冒泡，避免关闭弹窗
   
   const section = barElement.parentElement;
@@ -172,7 +180,7 @@ function toggleDetailSection(barElement) {
 let skinModeActive = false;
 
 // 打开时装切换面板（进入时装模式）
-function openCharSkinPanel() {
+export function openCharSkinPanel() {
   if (!currentDetailChar) return;
   
   const data = CHARACTER_DATA[currentDetailChar];
@@ -182,7 +190,7 @@ function openCharSkinPanel() {
 }
 
 // 进入时装模式
-function enterSkinMode() {
+export function enterSkinMode() {
   skinModeActive = true;
   const container = document.querySelector('.char-detail-container');
   container.classList.add('skin-mode');
@@ -192,7 +200,7 @@ function enterSkinMode() {
 }
 
 // 退出时装模式
-function exitSkinMode() {
+export function exitSkinMode() {
   skinModeActive = false;
   const container = document.querySelector('.char-detail-container');
   const skinList = document.getElementById('skin-mode-list');
@@ -207,7 +215,7 @@ function exitSkinMode() {
 }
 
 // 渲染时装列表
-function renderSkinList() {
+export function renderSkinList() {
   if (!currentDetailChar) return;
   
   const data = CHARACTER_DATA[currentDetailChar];
@@ -267,7 +275,7 @@ function renderSkinList() {
 }
 
 // 从列表选择时装
-function selectSkinFromList(charId, skinId) {
+export function selectSkinFromList(charId, skinId) {
   if (skinId) {
     // 检查是否拥有 - 使用getCharSkins获取
     const skins = SkinSystem.getCharSkins(charId);
@@ -304,7 +312,7 @@ function selectSkinFromList(charId, skinId) {
 }
 
 // 刷新立绘显示（不退出时装模式）
-function refreshCharDetailArt() {
+export function refreshCharDetailArt() {
   if (!currentDetailChar) return;
   
   const data = CHARACTER_DATA[currentDetailChar];
@@ -343,8 +351,16 @@ function refreshCharDetailArt() {
 }
 
 // 刷新干员详情（用于时装切换后）
-function refreshCharDetail() {
+export function refreshCharDetail() {
   if (currentDetailChar) {
     showCharDetail(currentDetailChar);
   }
 }
+
+// 绑定到 window 以支持 HTML 中的 onclick 调用
+window.showCharDetail = showCharDetail;
+window.closeCharDetail = closeCharDetail;
+window.toggleDetailSection = toggleDetailSection;
+window.openCharSkinPanel = openCharSkinPanel;
+window.exitSkinMode = exitSkinMode;
+window.selectSkinFromList = selectSkinFromList;

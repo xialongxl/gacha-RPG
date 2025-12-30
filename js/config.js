@@ -1,5 +1,5 @@
 // 游戏配置
-const CONFIG = {
+export const CONFIG = {
   PITY: 20,              // 保底抽数（90抽保底6星）
   STORAGE_KEY: 'gachaRpgState',
   
@@ -244,12 +244,12 @@ const CONFIG = {
 };
 
 // 计算潜能加成后的属性
-function applyPotentialBonus(baseValue, potential) {
+export function applyPotentialBonus(baseValue, potential) {
   const bonus = 1 + (potential - 1) * CONFIG.POTENTIAL_BONUS_PER_LEVEL;
   return Math.floor(baseValue * bonus);
 }
 
 // 获取潜能加成百分比
-function getPotentialBonusPercent(potential) {
+export function getPotentialBonusPercent(potential) {
   return (potential - 1) * CONFIG.POTENTIAL_BONUS_PER_LEVEL * 100;
 }

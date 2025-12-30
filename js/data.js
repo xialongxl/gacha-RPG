@@ -1,6 +1,6 @@
 // ==================== 自动填充干员资源路径 ====================
 
-function processCharacterData(data) {
+export function processCharacterData(data) {
   const processed = {};
   
   for (const [name, char] of Object.entries(data)) {
@@ -24,9 +24,24 @@ function processCharacterData(data) {
   return processed;
 }
 
+// ==================== 潜能加成计算 ====================
+
+/**
+ * 计算潜能加成后的属性
+ * @param {number} value - 基础属性值
+ * @param {number} potential - 潜能等级 (1-6)
+ * @returns {number} 加成后的属性值
+ */
+export function applyPotentialBonus(value, potential) {
+  if (!potential || potential <= 1) return value;
+  // 每级潜能增加 2% 属性
+  const bonus = 1 + (potential - 1) * 0.02;
+  return Math.floor(value * bonus);
+}
+
 // ==================== 干员原始数据 ====================
 
-const CHARACTER_DATA_RAW = {
+export const CHARACTER_DATA_RAW = {
   // ========== 6星 ==========
   '阿米娅': { 
     id: 'char_002_amiya',
@@ -269,11 +284,11 @@ const CHARACTER_DATA_RAW = {
 };
 
 // 处理后的干员数据
-const CHARACTER_DATA = processCharacterData(CHARACTER_DATA_RAW);
+export const CHARACTER_DATA = processCharacterData(CHARACTER_DATA_RAW);
 
 // ==================== 关卡数据 ====================
 
-const STAGES = [
+export const STAGES = [
   // 第一章：简单
   {
     id: 1,

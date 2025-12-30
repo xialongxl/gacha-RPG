@@ -1,5 +1,7 @@
 // ==================== 敌人AI系统 ====================
 
+import { SKILL_EFFECTS } from './skills.js';
+
 /**
  * 获取敌人决策
  * @param {Object} enemy - 敌人单位
@@ -7,7 +9,7 @@
  * @param {Array} aliveEnemies - 存活的敌人单位
  * @returns {Object} { skill, target, strategy }
  */
-function getEnemyDecision(enemy, aliveAllies, aliveEnemies) {
+export function getEnemyDecision(enemy, aliveAllies, aliveEnemies) {
   const skill = chooseEnemySkill(enemy, aliveAllies, aliveEnemies);
   
   let target = null;

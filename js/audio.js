@@ -1,7 +1,9 @@
 // ==================== 音频管理系统 ====================
 // 使用 Howler.js 实现BGM和音效管理
 
-const AudioManager = {
+import { getSetting, saveSetting } from './state.js';
+
+export const AudioManager = {
   // BGM实例
   bgm: null,
   // 当前播放的BGM名称
@@ -234,13 +236,8 @@ const AudioManager = {
   }
 };
 
-// 页面加载完成后初始化
-document.addEventListener('DOMContentLoaded', () => {
-  AudioManager.init();
-});
-
 // ==================== BGM播放器系统 ====================
-const BGMPlayer = {
+export const BGMPlayer = {
   // 多播放列表配置
   PLAYLISTS: {
     main: {
@@ -281,7 +278,19 @@ const BGMPlayer = {
     this.updateUI();
     this.startProgressTimer();
     this.initDragEvents();
+    this.initGlobalEvents();
     this.updateMuteIcon();
+  },
+
+  // 初始化全局事件（如点击外部关闭面板）
+  initGlobalEvents() {
+    document.addEventListener('click', (e) => {
+      const player = document.getElementById('bgm-player');
+      const panel = document.getElementById('bgm-panel');
+      if (player && panel && !player.contains(e.target)) {
+        panel.classList.remove('active');
+      }
+    });
   },
   
   // 切换播放列表
@@ -593,22 +602,10 @@ const BGMPlayer = {
   }
 };
 
-function toggleBGMPlayer() {
+export function toggleBGMPlayer() {
   const panel = document.getElementById('bgm-panel');
   if (panel) panel.classList.toggle('active');
 }
-
-document.addEventListener('click', (e) => {
-  const player = document.getElementById('bgm-player');
-  const panel = document.getElementById('bgm-panel');
-  if (player && panel && !player.contains(e.target)) {
-    panel.classList.remove('active');
-  }
-});
-
-document.addEventListener('DOMContentLoaded', () => {
-  setTimeout(() => BGMPlayer.init(), 500);
-});
 
 // ==================== 场景BGM切换辅助函数 ====================
 
@@ -616,7 +613,7 @@ document.addEventListener('DOMContentLoaded', () => {
  * 切换到主界面BGM
  * 用于：抽卡页、队伍页、商店页等非战斗场景
  */
-function playMainBGM() {
+export function playMainBGM() {
   BGMPlayer.switchPlaylist('main');
   BGMPlayer.isPlayerMode = true;
   if (BGMPlayer.playlist.length > 0) {
@@ -628,7 +625,7 @@ function playMainBGM() {
  * 切换到战斗BGM
  * 用于：普通关卡战斗
  */
-function playBattleBGM() {
+export function playBattleBGM() {
   BGMPlayer.switchPlaylist('battle');
   BGMPlayer.isPlayerMode = true;
   if (BGMPlayer.playlist.length > 0) {
@@ -640,7 +637,7 @@ function playBattleBGM() {
  * 切换到无尽模式BGM
  * 用于：无尽模式
  */
-function playEndlessBGM() {
+export function playEndlessBGM() {
   BGMPlayer.switchPlaylist('endless');
   BGMPlayer.isPlayerMode = true;
   if (BGMPlayer.playlist.length > 0) {
@@ -652,6 +649,6 @@ function playEndlessBGM() {
  * 停止BGM
  * 用于：抽卡页（不播放BGM）
  */
-function stopBGM() {
+export function stopBGM() {
   AudioManager.stopBGM();
 }

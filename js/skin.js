@@ -1,7 +1,14 @@
 // ==================== 时装系统 ====================
 
+import { state, store } from './state.js';
+import { CHARACTER_DATA } from './data.js';
+import { showModal, closeModal, clearSpineInstances } from './ui.js';
+import { clearTeamRenderCache, updateTeamUI } from './team.js';
+// 假设 charDetail.js 将被重构为导出 refreshCharDetail
+import { refreshCharDetail } from './charDetail.js';
+
 // ==================== 时装数据 ====================
-const SKIN_DATA = {
+export const SKIN_DATA = {
   // 缪尔赛思 - 2个时装位
   'mlyss_skin_1': {
     charId: 'char_249_mlyss',
@@ -54,7 +61,7 @@ const SKIN_DATA = {
 };
 
 // ==================== 时装系统 ====================
-const SkinSystem = {
+export const SkinSystem = {
   
   // 获取干员可用时装列表
   getCharSkins(charId) {
@@ -91,14 +98,10 @@ const SkinSystem = {
     }
     
     // 扣除时装券
-    state.skinTickets -= skin.price;
+    store.consumeSkinTickets(skin.price);
     
     // 添加到已拥有列表
-    if (!state.ownedSkins) state.ownedSkins = [];
-    state.ownedSkins.push(skinId);
-    
-    // 保存
-    saveState();
+    store.addSkin(skinId);
     
     return { success: true, message: `成功购买时装：${skin.name}` };
   },
@@ -107,9 +110,7 @@ const SkinSystem = {
   equipSkin(charId, skinId) {
     // skinId为null表示使用默认外观
     if (skinId === null) {
-      if (!state.equippedSkins) state.equippedSkins = {};
-      delete state.equippedSkins[charId];
-      saveState();
+      store.equipSkin(charId, null);
       return { success: true, message: '已切换为默认外观' };
     }
     
@@ -124,9 +125,7 @@ const SkinSystem = {
     }
     
     // 装备
-    if (!state.equippedSkins) state.equippedSkins = {};
-    state.equippedSkins[charId] = skinId;
-    saveState();
+    store.equipSkin(charId, skinId);
     
     return { success: true, message: `已装备：${skin.name}` };
   },
@@ -272,3 +271,6 @@ const SkinSystem = {
 };
 
 // ==================== 商店系统已移至 shop.js ====================
+
+// 绑定到 window 以支持 HTML 中的 onclick 调用
+window.SkinSystem = SkinSystem;

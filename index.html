@@ -12,6 +12,8 @@
   <!-- 再引入pixi-spine (支持3.7/3.8/4.1) -->
   <script src="lib/pixi-spine.umd.js"></script>
   <link rel="icon" href="assets/img/ak.png" type="image/png">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#16213e">
 
 </head>
 <body>
@@ -342,26 +344,18 @@
 <!-- Howler.js 音频库 -->
 <script src="lib/howler.js"></script>
 
-<!-- 按顺序加载JS模块 -->
-<script src="js/config.js"></script>
-<script src="js/data.js"></script>
-<script src="js/skin.js"></script>
-<script src="js/shop.js"></script>
-<script src="js/state.js"></script>
-<script src="js/audio.js"></script>
-<script src="js/summon.js"></script>
-<script src="js/endless_and_smartAI/smartAI.js"></script>
-<script src="js/endless_and_smartAI/smartAI_battle.js"></script>
-<script src="js/cutscene.js"></script>
-<script src="js/ui.js"></script>
-<script src="js/charDetail.js"></script>
-<script src="js/gacha.js"></script>
-<script src="js/team.js"></script>
-<script src="js/skills.js"></script>
-<script src="js/enemyAI.js"></script>
-<script src="js/battle.js"></script>
-<script src="js/endless_and_smartAI/endless.js"></script>
-<script src="js/exchange.js"></script>
-<script src="js/main.js"></script>
+<!-- 加载ES Module入口 -->
+<script type="module" src="js/main.js"></script>
+
+<!-- 注册 Service Worker -->
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js')
+        .then(reg => console.log('Service Worker 注册成功'))
+        .catch(err => console.log('Service Worker 注册失败:', err));
+    });
+  }
+</script>
 </body>
 </html>

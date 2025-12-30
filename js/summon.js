@@ -1,6 +1,8 @@
 // ==================== 召唤系统 ====================
 
-const SummonSystem = {
+import { CONFIG } from './config.js';
+
+export const SummonSystem = {
   // 当前战斗中的召唤物列表
   summons: [],
   
@@ -12,11 +14,13 @@ const SummonSystem = {
   
   // 初始化召唤系统（战斗开始时调用）
   init(team) {
+    console.log('🤖 召唤系统初始化...');
     this.summons = [];
     this.summonerState.clear();
     
     // 找出队伍中的召唤师并初始化状态
     const summoners = this.getSummonersInTeam(team);
+    console.log(`🤖 发现 ${summoners.length} 名召唤师`);
     summoners.forEach(summoner => {
       this.summonerState.set(summoner.id, {
         actionCount: 0,        // 行动计数
@@ -63,8 +67,12 @@ const SummonSystem = {
   
   // 创建召唤物
   createSummon(owner) {
+    console.log(`🤖 尝试为 ${owner.name} 创建召唤物...`);
     const summonData = this.getSummonData(owner);
-    if (!summonData) return null;
+    if (!summonData) {
+      console.warn(`⚠️ 未找到 ${owner.name} 的召唤物数据`);
+      return null;
+    }
     
     const ratio = CONFIG.SUMMON.INHERIT_RATIO;
     
@@ -133,6 +141,7 @@ const SummonSystem = {
     };
     
     this.summons.push(summon);
+    console.log(`✅ 召唤物 ${summon.name} 创建成功 (Owner: ${owner.name})`);
     return summon;
   },
   
@@ -169,6 +178,7 @@ const SummonSystem = {
   
   // 召唤师行动时调用（回合开始时）
   onSummonerTurnStart(summoner) {
+    // console.log(`🤖 召唤师 ${summoner.name} 回合开始处理`);
     const state = this.summonerState.get(summoner.id);
     if (!state) return [];
     
@@ -238,6 +248,7 @@ const SummonSystem = {
   
   // 召唤物死亡
   onSummonDeath(summon) {
+    console.log(`💀 召唤物 ${summon.name} 死亡`);
     // 从列表移除
     const index = this.summons.findIndex(s => s.id === summon.id);
     if (index !== -1) {
@@ -248,6 +259,7 @@ const SummonSystem = {
     const state = this.summonerState.get(summon.ownerId);
     if (state) {
       state.needRefresh = true;
+      console.log(`🤖 标记召唤师 ${state.ownerName || summon.ownerId} 需要补充召唤物`);
     }
   },
   
@@ -422,3 +434,6 @@ const SummonSystem = {
     this.summonerState.clear();
   }
 };
+
+// 挂载到 window 以便 state.js 访问
+window.SummonSystem = SummonSystem;

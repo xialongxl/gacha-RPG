@@ -1,5 +1,9 @@
 // ==================== 兑换系统 ====================
 
+import { state, store } from './state.js';
+import { CHARACTER_DATA } from './data.js';
+import { updateTeamUI } from './team.js';
+
 // 兑换规则：5个低星满潜 → 1个高星潜能+1
 const EXCHANGE_RULES = {
   3: { target: 4, cost: 5 },  // 5个3星满潜 → 4星潜能+1
@@ -72,14 +76,13 @@ function doExchange(sourceRarity, targetCharName) {
   let consumed = 0;
   for (const source of sources) {
     if (consumed >= rule.cost) break;
-    delete state.inventory[source.name];
+    store.removeCharacter(source.name);
     consumed++;
   }
   
   // 目标干员潜能+1
-  state.inventory[targetCharName].potential++;
+  store.increasePotential(targetCharName, 1);
   
-  saveState();
   alert(`兑换成功！${targetCharName} 潜能提升至 ${state.inventory[targetCharName].potential}`);
   
   return true;
@@ -136,7 +139,7 @@ function renderExchangeUI() {
 }
 
 // 确认兑换
-function confirmExchange(sourceRarity, targetName) {
+export function confirmExchange(sourceRarity, targetName) {
   const rule = EXCHANGE_RULES[sourceRarity];
   const stars = '★'.repeat(sourceRarity);
   
@@ -156,12 +159,17 @@ function confirmExchange(sourceRarity, targetName) {
 }
 
 // 打开兑换界面
-function openExchange() {
+export function openExchange() {
   document.getElementById('exchange-modal').classList.add('active');
   renderExchangeUI();
 }
 
 // 关闭兑换界面
-function closeExchange() {
+export function closeExchange() {
   document.getElementById('exchange-modal').classList.remove('active');
 }
+
+// 绑定到 window 以支持 HTML 中的 onclick 调用
+window.openExchange = openExchange;
+window.closeExchange = closeExchange;
+window.confirmExchange = confirmExchange;

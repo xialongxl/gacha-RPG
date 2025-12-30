@@ -1,5 +1,13 @@
 // ==================== UI通用函数 ====================
 
+import { state, battle } from './state.js';
+import { CHARACTER_DATA } from './data.js';
+// 这些模块将在后续步骤中重构，这里先预留 import
+// 注意：为了避免循环依赖导致的初始化问题，确保不要在顶层代码调用这些模块的函数
+import { updateTeamUI, clearTeamRenderCache } from './team.js';
+import { updateStageUI } from './battle.js';
+import { queueCutscene } from './cutscene.js';
+
 // Spine播放器实例管理（存储Pixi App和Spine对象）
 const spineInstances = new Map();
 
@@ -10,11 +18,12 @@ const spineDataCache = new Map();
 const MAX_SPINE_INSTANCES = 8;
 
 // 清理所有Spine实例
-function clearAllSpineInstances() {
+export function clearAllSpineInstances() {
   spineInstances.forEach((instance, id) => {
     try {
       if (instance && instance.app && typeof instance.app.destroy === 'function') {
-        instance.app.destroy(true, { children: true, texture: true, baseTexture: true });
+        // 不要销毁 texture 和 baseTexture，防止影响其他共享资源的实例或缓存
+        instance.app.destroy(true, { children: true, texture: false, baseTexture: false });
       }
     } catch (e) {
       console.warn('销毁Pixi实例失败:', id, e);
@@ -77,7 +86,8 @@ function destroySingleSpineInstance(id) {
   if (instance) {
     try {
       if (instance.app) {
-        instance.app.destroy(true, { children: true, texture: true, baseTexture: true });
+        // 不要销毁 texture 和 baseTexture
+        instance.app.destroy(true, { children: true, texture: false, baseTexture: false });
       }
     } catch (e) {}
   }
@@ -87,7 +97,7 @@ function destroySingleSpineInstance(id) {
 }
 
 // 创建Spine播放器（使用Pixi渲染）
-function createSpinePlayer(containerId, spineData) {
+export function createSpinePlayer(containerId, spineData) {
   if (!spineData || !spineData.skel || !spineData.atlas) {
     console.warn('Spine数据不完整');
     return false;
@@ -384,7 +394,7 @@ function showPlaceholder(containerId) {
 }
 
 // 生成Spine干员（队伍槽位和战斗界面用）
-function createSpineMedia(charData, charName, className, width, height) {
+export function createSpineMedia(charData, charName, className, width, height) {
   width = width || 125;
   height = height || 160;
   
@@ -428,7 +438,7 @@ function createSpineMedia(charData, charName, className, width, height) {
 }
 
 // 清理指定前缀的Spine实例
-function clearSpineInstances(prefix) {
+export function clearSpineInstances(prefix) {
   const toDelete = [];
   spineInstances.forEach((instance, id) => {
     if (id.startsWith(prefix)) {
@@ -457,7 +467,7 @@ function clearSpineInstances(prefix) {
 }
 
 // 更新资源显示
-function updateResourceUI() {
+export function updateResourceUI() {
   document.getElementById('tickets').textContent = state.tickets;
   document.getElementById('gold').textContent = state.gold;
   document.getElementById('pity').textContent = state.pity;
@@ -470,12 +480,15 @@ function updateResourceUI() {
 }
 
 // 页面切换
-function showPage(pageName) {
+export function showPage(pageName) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
   
   document.getElementById(`page-${pageName}`).classList.add('active');
-  document.querySelector(`.nav button[data-page="${pageName}"]`).classList.add('active');
+  const navBtn = document.querySelector(`.nav button[data-page="${pageName}"]`);
+  if (navBtn) {
+    navBtn.classList.add('active');
+  }
   
   if (pageName === 'team') {
     updateTeamUI();
@@ -485,7 +498,7 @@ function showPage(pageName) {
 }
 
 // 显示抽卡结果（显示星级和干员数据）
-function showGachaResult(results) {
+export function showGachaResult(results) {
   const container = document.getElementById('gacha-result');
   container.innerHTML = '';
   
@@ -527,7 +540,7 @@ function showGachaResult(results) {
 }
 
 // 显示模态框
-function showModal(title, content, showDefaultBtn = true) {
+export function showModal(title, content, showDefaultBtn = true) {
   document.getElementById('modal-title').textContent = title;
   document.getElementById('modal-rewards').innerHTML = content;
   
@@ -541,13 +554,13 @@ function showModal(title, content, showDefaultBtn = true) {
 }
 
 // 关闭模态框
-function closeModal() {
+export function closeModal() {
   document.getElementById('result-modal').classList.remove('active');
   // 不再自动调用closeBattleField()，由调用方决定是否关闭战斗界面
 }
 
 // 关闭战斗界面
-function closeBattleField() {
+export function closeBattleField() {
   document.getElementById('battle-field').classList.remove('active');
   document.getElementById('stage-panel').style.display = 'block';
   document.getElementById('skill-buttons').innerHTML = '';
@@ -566,13 +579,13 @@ function closeBattleField() {
 }
 
 // 添加战斗日志
-function addBattleLog(text, type = 'normal') {
+export function addBattleLog(text, type = 'normal') {
   battle.log.push({ text, type });
   if (battle.log.length > 50) battle.log.shift();
 }
 
 // 渲染战斗日志
-function renderBattleLog() {
+export function renderBattleLog() {
   let container = document.getElementById('battle-log');
   
   // 添加可拖拽头部（如果不存在）
@@ -645,7 +658,7 @@ function initBattleLogDrag(container, header) {
 }
 
 // 召唤物区域拖拽功能
-function initSummonSideDrag(container) {
+export function initSummonSideDrag(container) {
   let isDragging = false;
   let startX, startY, startLeft, startTop;
   
@@ -678,7 +691,7 @@ function initSummonSideDrag(container) {
 }
 
 // 召唤物区域最小化切换
-function toggleSummonSideMinimize() {
+export function toggleSummonSideMinimize() {
   const container = document.getElementById('summon-side');
   if (container) {
     container.classList.toggle('minimized');
@@ -691,7 +704,7 @@ function toggleSummonSideMinimize() {
 
 // ==================== 滚动条自动隐藏功能 ====================
 // 初始化滚动区域的自动隐藏滚动条
-function initAutoHideScrollbar(selector, hideDelay = 1000) {
+export function initAutoHideScrollbar(selector, hideDelay = 1000) {
   const elements = document.querySelectorAll(selector);
   elements.forEach(el => {
     let scrollTimer = null;
@@ -712,7 +725,7 @@ function initAutoHideScrollbar(selector, hideDelay = 1000) {
 }
 
 // 初始化存档管理器滚动条
-function initSaveManagerScrollbar() {
+export function initSaveManagerScrollbar() {
   // 使用MutationObserver监听模态框显示
   const modal = document.getElementById('result-modal');
   if (!modal) return;
@@ -729,3 +742,14 @@ function initSaveManagerScrollbar() {
   
   observer.observe(modal, { attributes: true, attributeFilter: ['class'] });
 }
+
+// 绑定到 window 以支持 HTML 中的 onclick 调用
+window.showPage = showPage;
+window.closeModal = closeModal;
+window.closeBattleField = closeBattleField;
+window.toggleSummonSideMinimize = toggleSummonSideMinimize;
+window.updateResourceUI = updateResourceUI;
+window.showModal = showModal;
+window.addBattleLog = addBattleLog;
+window.renderBattleLog = renderBattleLog;
+window.clearAllSpineInstances = clearAllSpineInstances;

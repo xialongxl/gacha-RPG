@@ -1,13 +1,21 @@
 // ==================== 商店系统 ====================
 // 从skin.js分离出来的商店系统
 
+import { state, store } from './state.js';
+import { CONFIG } from './config.js';
+import { CHARACTER_DATA } from './data.js';
+import { updateResourceUI } from './ui.js';
+import { SkinSystem, SKIN_DATA } from './skin.js';
+
 // ==================== 商店系统对象 ====================
-const ShopSystem = {
+export const ShopSystem = {
   // 初始化商店
   init() {
+    console.log('🛍️ 商店系统初始化...');
     this.bindTabEvents();
     this.renderSkinShop();
     this.updateCurrency();
+    console.log('✅ 商店系统初始化完成');
   },
   
   // 绑定标签切换事件
@@ -61,7 +69,7 @@ const ShopSystem = {
     if (!container) return;
     
     // 检查SKIN_DATA是否存在
-    if (typeof SKIN_DATA === 'undefined') {
+    if (!SKIN_DATA) {
       container.innerHTML = '<p style="text-align:center;color:#888;">时装数据加载中...</p>';
       return;
     }
@@ -86,7 +94,7 @@ const ShopSystem = {
     for (const [charId, skins] of Object.entries(groupedByChar)) {
       // 获取干员名（CHARACTER_DATA的key是干员名，value.id是干员ID）
       let charName = charId;
-      if (typeof CHARACTER_DATA !== 'undefined') {
+      if (CHARACTER_DATA) {
         for (const [name, char] of Object.entries(CHARACTER_DATA)) {
           if (char.id === charId) {
             charName = name;
@@ -119,7 +127,7 @@ const ShopSystem = {
             </div>
             <button class="skin-buy-btn" 
                     ${btnDisabled ? 'disabled' : ''} 
-                    onclick="ShopSystem.buySkin('${skin.id}')">
+                    onclick="window.ShopSystem.buySkin('${skin.id}')">
               ${btnText}
             </button>
           </div>
@@ -139,7 +147,7 @@ const ShopSystem = {
   // 购买时装
   buySkin(skinId) {
     // 检查SkinSystem是否存在
-    if (typeof SkinSystem === 'undefined') {
+    if (!SkinSystem) {
       alert('时装系统未加载');
       return;
     }
@@ -150,9 +158,7 @@ const ShopSystem = {
       alert(result.message);
       this.renderSkinShop();
       this.updateCurrency();
-      if (typeof updateResourceUI === 'function') {
-        updateResourceUI();
-      }
+      updateResourceUI();
     } else {
       alert(result.message);
     }
@@ -181,29 +187,23 @@ const ShopSystem = {
     }
     
     // 扣除无尽币
-    state.endlessCoin -= coinNeeded;
+    store.consumeEndlessCoin(coinNeeded);
     
     // 增加时装券
-    state.skinTickets = (state.skinTickets || 0) + amount;
-    
-    // 保存状态
-    saveState();
+    store.addSkinTickets(amount);
     
     // 更新界面
     this.updateCurrency();
     this.renderSkinShop();  // 刷新时装商店（可能可以购买了）
     
-    if (typeof updateResourceUI === 'function') {
-      updateResourceUI();
-    }
+    updateResourceUI();
     
     alert(`成功兑换 ${amount} 张时装券！`);
   }
 };
 
 // ==================== 页面切换时刷新商店 ====================
-document.addEventListener('DOMContentLoaded', () => {
-  // 监听商店页面显示
+export function initShopPageObserver() {
   const shopPage = document.getElementById('page-shop');
   if (shopPage) {
     // 使用MutationObserver监听class变化
@@ -218,5 +218,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     observer.observe(shopPage, { attributes: true });
+    console.log('👀 商店页面观察器已启动');
   }
-});
+}
+
+// 绑定到 window 以支持 HTML 中的 onclick 调用
+window.ShopSystem = ShopSystem;

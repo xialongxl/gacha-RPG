@@ -12,9 +12,11 @@
 //
 // ========================================================================
 
+import { CONFIG } from './config.js';
+
 // ==================== 初始化数据库 ====================
 
-const GameDB = new Dexie('GachaRPG_Database');
+export const GameDB = new Dexie('GachaRPG_Database');
 GameDB.version(1).stores({
   // 游戏存档
   saves: 'id, name, timestamp, data',
@@ -43,10 +45,10 @@ const DEFAULT_STATE = {
 };
 
 // 当前游戏状态
-let state = { ...DEFAULT_STATE };
+export let state = { ...DEFAULT_STATE };
 
 // 战斗状态
-let battle = {
+export let battle = {
   active: false,
   stage: null,
   allies: [],
@@ -62,10 +64,186 @@ let battle = {
 };
 
 // 队伍选择状态
-let selectedSlot = null;
+export let selectedSlot = null;
 
 // 当前存档槽位
-let currentSaveSlot = 'auto';
+export let currentSaveSlot = 'auto';
+
+// ==================== 状态管理 Store ====================
+
+class GameStore {
+  // --- 资源管理 ---
+
+  addTickets(amount) {
+    state.tickets = (state.tickets || 0) + amount;
+    this.save();
+    return state.tickets;
+  }
+
+  consumeTickets(amount) {
+    if (state.tickets >= amount) {
+      state.tickets -= amount;
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  addGold(amount) {
+    state.gold = (state.gold || 0) + amount;
+    this.save();
+    return state.gold;
+  }
+
+  consumeGold(amount) {
+    if (state.gold >= amount) {
+      state.gold -= amount;
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  addEndlessCoin(amount) {
+    state.endlessCoin = (state.endlessCoin || 0) + amount;
+    this.save();
+    return state.endlessCoin;
+  }
+
+  consumeEndlessCoin(amount) {
+    if ((state.endlessCoin || 0) >= amount) {
+      state.endlessCoin -= amount;
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  addSkinTickets(amount) {
+    state.skinTickets = (state.skinTickets || 0) + amount;
+    this.save();
+    return state.skinTickets;
+  }
+
+  consumeSkinTickets(amount) {
+    if ((state.skinTickets || 0) >= amount) {
+      state.skinTickets -= amount;
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  // --- 抽卡相关 ---
+
+  setPity(value) {
+    state.pity = value;
+    this.save();
+  }
+
+  incrementPity() {
+    state.pity = (state.pity || 0) + 1;
+    this.save();
+  }
+
+  checkDaily(dateStr) {
+    return state.lastDaily === dateStr;
+  }
+
+  setDaily(dateStr) {
+    state.lastDaily = dateStr;
+    this.save();
+  }
+
+  // --- 库存管理 ---
+
+  hasCharacter(name) {
+    return !!state.inventory[name];
+  }
+
+  // 获得干员（抽卡专用，处理潜能和金币转换）
+  acquireCharacter(name, rarity) {
+    if (state.inventory[name]) {
+      // 已有该干员
+      state.inventory[name].count = (state.inventory[name].count || 0) + 1;
+      
+      const currentPotential = state.inventory[name].potential || 1;
+      if (currentPotential < 13) {
+        state.inventory[name].potential = currentPotential + 1;
+      } else {
+        // 满潜转金币
+        const goldGain = CONFIG.GOLD_CONVERT[rarity] || 0;
+        this.addGold(goldGain);
+      }
+    } else {
+      // 新干员
+      state.inventory[name] = { count: 1, potential: 1 };
+    }
+    this.save();
+  }
+
+  addCharacter(name, initialPotential = 1) {
+    if (state.inventory[name]) {
+      // 已存在，增加潜能
+      state.inventory[name].potential += initialPotential;
+    } else {
+      // 新干员
+      state.inventory[name] = { count: 1, potential: initialPotential };
+    }
+    this.save();
+  }
+
+  increasePotential(name, amount = 1) {
+    if (state.inventory[name]) {
+      state.inventory[name].potential += amount;
+      this.save();
+    }
+  }
+
+  removeCharacter(name) {
+    if (state.inventory[name]) {
+      delete state.inventory[name];
+      this.save();
+    }
+  }
+
+  // --- 队伍管理 ---
+
+  setTeamMember(slotIndex, charName) {
+    if (slotIndex >= 0 && slotIndex < 4) {
+      state.team[slotIndex] = charName;
+      this.save();
+    }
+  }
+
+  // --- 皮肤管理 ---
+
+  addSkin(skinId) {
+    if (!state.ownedSkins) state.ownedSkins = [];
+    if (!state.ownedSkins.includes(skinId)) {
+      state.ownedSkins.push(skinId);
+      this.save();
+    }
+  }
+
+  equipSkin(charId, skinId) {
+    if (!state.equippedSkins) state.equippedSkins = {};
+    if (skinId === null) {
+      delete state.equippedSkins[charId];
+    } else {
+      state.equippedSkins[charId] = skinId;
+    }
+    this.save();
+  }
+
+  // --- 辅助 ---
+  
+  save() {
+    saveState();
+  }
+}
+
+export const store = new GameStore();
 
 // ==================== 存档管理 ====================
 
@@ -73,7 +251,7 @@ let currentSaveSlot = 'auto';
  * 初始化存档系统
  * 页面加载时调用，检查并迁移旧数据
  */
-async function initSaveSystem() {
+export async function initSaveSystem() {
   console.log('💾 初始化存档系统...');
   
   try {
@@ -147,7 +325,7 @@ async function migrateFromLocalStorage() {
  * 
  * @param {string} slotId - 存档槽位ID，默认 'auto'
  */
-async function loadState(slotId = 'auto') {
+export async function loadState(slotId = 'auto') {
   try {
     const save = await GameDB.saves.get(slotId);
     
@@ -179,7 +357,7 @@ async function loadState(slotId = 'auto') {
  * @param {string} slotId - 存档槽位ID，默认使用当前槽位
  * @param {string} name - 存档名称（可选）
  */
-async function saveState(slotId = currentSaveSlot, name = null) {
+export async function saveState(slotId = currentSaveSlot, name = null) {
   try {
     const saveData = {
       id: slotId,
@@ -203,7 +381,7 @@ async function saveState(slotId = currentSaveSlot, name = null) {
  * 
  * @returns {Array} 存档列表
  */
-async function getSaveList() {
+export async function getSaveList() {
   try {
     const saves = await GameDB.saves.toArray();
     return saves.sort((a, b) => b.timestamp - a.timestamp);
@@ -218,7 +396,7 @@ async function getSaveList() {
  * 
  * @param {string} slotId - 存档槽位ID
  */
-async function deleteSave(slotId) {
+export async function deleteSave(slotId) {
   try {
     await GameDB.saves.delete(slotId);
     console.log(`🗑️ 已删除存档: ${slotId}`);
@@ -233,7 +411,7 @@ async function deleteSave(slotId) {
  * @param {string} name - 存档名称
  * @returns {string} 新存档的ID
  */
-async function createNewSave(name) {
+export async function createNewSave(name) {
   const slotId = `save_${Date.now()}`;
   await saveState(slotId, name);
   return slotId;
@@ -245,7 +423,7 @@ async function createNewSave(name) {
  * 
  * @returns {string} JSON字符串
  */
-async function exportSave() {
+export async function exportSave() {
   const currentSave = await GameDB.saves.get(currentSaveSlot);
   if (!currentSave) {
     throw new Error('当前存档不存在');
@@ -265,7 +443,7 @@ async function exportSave() {
  * 
  * @returns {string} JSON字符串
  */
-async function exportAllSaves() {
+export async function exportAllSaves() {
   const saves = await GameDB.saves.toArray();
   const exportData = {
     version: 1,
@@ -280,7 +458,7 @@ async function exportAllSaves() {
  * 
  * @param {string} jsonString - JSON字符串
  */
-async function importSave(jsonString) {
+export async function importSave(jsonString) {
   try {
     const importData = JSON.parse(jsonString);
     
@@ -307,8 +485,10 @@ async function importSave(jsonString) {
 /**
  * 重置战斗状态
  */
-function resetBattle() {
-  battle = {
+export function resetBattle() {
+  // 直接修改导出变量的属性，而不是重新赋值变量本身
+  // 这样可以保持引用的一致性
+  Object.assign(battle, {
     active: false,
     stage: null,
     allies: [],
@@ -321,11 +501,11 @@ function resetBattle() {
     isEndless: false,
     useSmartAI: false,
     endlessFloor: 0
-  };
+  });
   
   // 清理召唤系统
-  if (typeof SummonSystem !== 'undefined') {
-    SummonSystem.clear();
+  if (typeof window.SummonSystem !== 'undefined') {
+    window.SummonSystem.clear();
   }
 }
 
@@ -336,7 +516,7 @@ function resetBattle() {
  * 
  * @returns {Array} 存活的我方单位数组
  */
-function getAllAllies() {
+export function getAllAllies() {
   return [...battle.allies, ...battle.summons].filter(unit => unit && unit.currentHp > 0);
 }
 
@@ -346,7 +526,7 @@ function getAllAllies() {
  * @param {Object} unit - 单位对象
  * @returns {boolean}
  */
-function isSummon(unit) {
+export function isSummon(unit) {
   return unit && unit.isSummon === true;
 }
 
@@ -354,9 +534,9 @@ function isSummon(unit) {
  * 同步召唤物到战斗状态
  * 从 SummonSystem 获取存活召唤物列表
  */
-function syncSummons() {
-  if (typeof SummonSystem !== 'undefined') {
-    battle.summons = SummonSystem.getAliveSummons();
+export function syncSummons() {
+  if (typeof window.SummonSystem !== 'undefined') {
+    battle.summons = window.SummonSystem.getAliveSummons();
   }
 }
 
@@ -368,7 +548,7 @@ function syncSummons() {
  * @param {string} key - 统计项名称
  * @param {number} increment - 增加值，默认1
  */
-async function updateStatistic(key, increment = 1) {
+export async function updateStatistic(key, increment = 1) {
   try {
     const stat = await GameDB.statistics.get(key);
     const newValue = (stat?.value || 0) + increment;
@@ -384,7 +564,7 @@ async function updateStatistic(key, increment = 1) {
  * @param {string} key - 统计项名称
  * @returns {number} 统计值
  */
-async function getStatistic(key) {
+export async function getStatistic(key) {
   try {
     const stat = await GameDB.statistics.get(key);
     return stat?.value || 0;
@@ -399,7 +579,7 @@ async function getStatistic(key) {
  * 
  * @returns {Object} 统计数据对象
  */
-async function getAllStatistics() {
+export async function getAllStatistics() {
   try {
     const stats = await GameDB.statistics.toArray();
     const result = {};
@@ -419,7 +599,7 @@ async function getAllStatistics() {
  * @param {string} key - 设置项名称
  * @param {any} value - 设置值
  */
-async function saveSetting(key, value) {
+export async function saveSetting(key, value) {
   try {
     await GameDB.settings.put({ id: key, value: value });
   } catch (error) {
@@ -434,7 +614,7 @@ async function saveSetting(key, value) {
  * @param {any} defaultValue - 默认值
  * @returns {any} 设置值
  */
-async function getSetting(key, defaultValue = null) {
+export async function getSetting(key, defaultValue = null) {
   try {
     const setting = await GameDB.settings.get(key);
     return setting?.value ?? defaultValue;
@@ -449,7 +629,7 @@ async function getSetting(key, defaultValue = null) {
 /**
  * 显示存档信息
  */
-async function showSaveInfo() {
+export async function showSaveInfo() {
   const saves = await getSaveList();
   console.log('📂 存档列表:');
   saves.forEach(save => {
@@ -462,7 +642,7 @@ async function showSaveInfo() {
  * 清除所有游戏数据
  * 危险操作，需要确认
  */
-async function clearAllGameData() {
+export async function clearAllGameData() {
   if (!confirm('⚠️ 确定要清除所有游戏数据吗？这将删除所有存档、设置和统计数据！')) {
     return;
   }
@@ -477,8 +657,8 @@ async function clearAllGameData() {
     await GameDB.statistics.clear();
     
     // 重置状态
-    state = { ...DEFAULT_STATE };
-    currentSaveSlot = 'auto';
+    // 这里我们不能直接 state = ... 因为它是 export let
+    // 我们可以清空它的属性并重新赋值，或者让 reload 来处理
     
     console.log('✅ 所有游戏数据已清除');
     

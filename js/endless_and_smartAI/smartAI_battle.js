@@ -13,7 +13,12 @@
 //
 // ========================================================================
 
-const SmartAI_Battle = {
+import { SmartAI } from './smartAI.js';
+import { battle } from '../state.js';
+import { SKILL_EFFECTS } from '../skills.js';
+import { EndlessMode } from './endless.js';
+
+export const SmartAI_Battle = {
   
   // 是否启用AI学习（仅无尽模式）
   // 设为false可临时禁用数据收集
@@ -311,30 +316,30 @@ ${stats.needMoreData ? `║ 还需: ${stats.battlesNeeded} 场战斗数据` : ''
  * 显示AI状态
  * 用法：在控制台输入 showAIStatus()
  */
-function showAIStatus() {
+window.showAIStatus = function() {
   return SmartAI_Battle.showAIStatus();
-}
+};
 
 /**
  * 强制训练AI
  * 用法：在控制台输入 forceTrainAI()
  */
-function forceTrainAI() {
+window.forceTrainAI = function() {
   return SmartAI_Battle.forceTraining();
-}
+};
 
 /**
  * 清除所有AI数据
  * 用法：在控制台输入 clearAIData()
  */
-function clearAIData() {
+window.clearAIData = function() {
   return SmartAI_Battle.clearAIData();
-}
+};
 
 /**
  * 导出训练数据
  * 用法：在控制台输入 exportAIData()
  */
-function exportAIData() {
+window.exportAIData = function() {
   return SmartAI_Battle.exportTrainingData();
-}
+};

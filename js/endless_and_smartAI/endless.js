@@ -1,6 +1,19 @@
 // ==================== 无尽模式系统 ====================
 
-const EndlessMode = {
+console.log('🔄 无尽模式模块加载中...');
+
+import { CHARACTER_DATA, applyPotentialBonus } from '../data.js';
+import { state, store, GameDB, battle, resetBattle } from '../state.js';
+import { CONFIG } from '../config.js';
+import { calculateTurnOrder, nextTurn } from '../battle.js';
+import { BattleRenderer } from '../battleRenderer.js';
+import { showModal, closeModal, updateResourceUI, addBattleLog, closeBattleField } from '../ui.js';
+import { SmartAI } from './smartAI.js';
+import { SmartAI_Battle } from './smartAI_battle.js';
+import { SummonSystem } from '../summon.js';
+import { getEnemyDecision } from '../enemyAI.js';
+
+export const EndlessMode = {
   // 状态
   active: false,
   currentFloor: 0,
@@ -402,9 +415,8 @@ const EndlessMode = {
   startBattle(stage) {
     const team = state.team.filter(c => c !== null);
     
-    saveState();
     resetBattle();
-    renderedSpineUnits.clear();
+    BattleRenderer.init();
     
     battle.active = true;
     battle.stage = stage;
@@ -522,7 +534,8 @@ const EndlessMode = {
     calculateTurnOrder();
     battle.currentTurn = 0;
     
-    renderBattleInitial();
+    // renderBattleInitial();
+    BattleRenderer.renderBattleInitial();
     
     // 显示无尽模式层数UI
     this.showFloorUI();
@@ -790,10 +803,9 @@ const EndlessMode = {
     
     // 只有撤退才发放奖励，失败则清空
     if (victory && (this.totalRewards.gold > 0 || this.totalRewards.tickets > 0 || endlessCoinEarned > 0)) {
-      state.gold += this.totalRewards.gold;
-      state.tickets += this.totalRewards.tickets;
-      state.endlessCoin = (state.endlessCoin || 0) + endlessCoinEarned;
-      saveState();
+      store.addGold(this.totalRewards.gold);
+      store.addTickets(this.totalRewards.tickets);
+      store.addEndlessCoin(endlessCoinEarned);
       updateResourceUI();
     }
     
@@ -991,7 +1003,7 @@ const EndlessMode = {
 
 // ==================== 无尽模式UI入口 ====================
 
-function showEndlessMode() {
+export function showEndlessMode() {
   const stats = EndlessMode.getStats();
   
   let aiStatus = '';
@@ -1043,8 +1055,13 @@ function showEndlessMode() {
   }, 100);
 }
 
-// ==================== 初始化 ====================
+// ==================== 模块导出 ====================
 
-document.addEventListener('DOMContentLoaded', () => {
+// 暴露给全局，以便在 main.js 中初始化
+export function initEndlessMode() {
   EndlessMode.init();
-});
+}
+
+// 已移除自动初始化
+window.showEndlessMode = showEndlessMode;
+console.log('✅ 无尽模式模块加载完成');

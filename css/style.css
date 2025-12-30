@@ -5,6 +5,7 @@
   box-sizing: border-box;
 }
 
+
 body {
   font-family: 'Microsoft YaHei', sans-serif;
   background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
@@ -242,6 +243,38 @@ body {
 
 
 /* ==================== 队伍页 ==================== */
+/* 队伍页独立滚动容器 */
+#page-team {
+  max-height: 80vh;
+  overflow-y: auto;
+  padding-right: 5px;
+}
+
+/* 队伍页独立滚动条美化 - JS控制隐藏式 */
+#page-team::-webkit-scrollbar {
+  width: 6px;
+  background-color: transparent;
+}
+
+#page-team::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#page-team::-webkit-scrollbar-thumb {
+  background: transparent; /* 默认隐藏 */
+  border-radius: 3px;
+  transition: background-color 0.3s;
+}
+
+/* 滚动时显示 (由JS添加 .scrolling 类) */
+#page-team.scrolling::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+#page-team.scrolling::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
 .team-slots {
   display: flex;
   justify-content: center;
@@ -277,6 +310,44 @@ body {
 .team-slot.selected {
   border-color: #f5af19;
   box-shadow: 0 0 15px rgba(245,175,25,0.5);
+  animation: slot-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes slot-pulse {
+  0%, 100% { 
+    box-shadow: 0 0 15px rgba(245,175,25,0.5);
+    border-color: #f5af19;
+  }
+  50% { 
+    box-shadow: 0 0 30px rgba(245,175,25,0.9), 0 0 50px rgba(245,175,25,0.4);
+    border-color: #ffd700;
+  }
+}
+
+/* 干员卡片可编队状态 */
+.char-item.can-assign {
+  border-color: #4ade80 !important;
+  position: relative;
+}
+
+.char-item.can-assign::before {
+  content: '点击编队';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+  color: #000;
+  font-size: 11px;
+  font-weight: bold;
+  padding: 3px 0;
+  text-align: center;
+  z-index: 10;
+}
+
+.char-item.can-assign:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 20px rgba(74, 222, 128, 0.6);
 }
 
 .team-slot .slot-video,

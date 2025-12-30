@@ -1,7 +1,9 @@
 // ==================== 深度学习AI系统 ====================
 
+import { SKILL_EFFECTS } from '../skills.js';
+
 // 初始化数据库 - V3加入训练数据版本追踪
-const SmartAI_DB = new Dexie('SmartAI_Database');
+export const SmartAI_DB = new Dexie('SmartAI_Database');
 
 // V2: 词缀支持
 SmartAI_DB.version(2).stores({
@@ -45,7 +47,7 @@ const DEBUFF_STAT_LIST = ['atk', 'def', 'spd'];
 
 // ==================== 核心AI对象 ====================
 
-const SmartAI = {
+export const SmartAI = {
   // 配置
   config: {
     MIN_BATTLES_TO_TRAIN: 20,    // 最少20场战斗后开始训练
@@ -730,9 +732,4 @@ const SmartAI = {
 };
 
 // ==================== 页面加载时初始化 ====================
-
-document.addEventListener('DOMContentLoaded', () => {
-  SmartAI.init().catch(err => {
-    console.error('SmartAI 初始化失败:', err);
-  });
-});
+// 已移除自动初始化，由 main.js 控制

@@ -1,19 +1,24 @@
 // ==================== 抽卡系统 ====================
 
+import { state, store } from './state.js';
+import { CONFIG } from './config.js';
+import { CHARACTER_DATA } from './data.js';
+import { showGachaResult, updateResourceUI } from './ui.js';
+
 // 单次抽取
 function pull() {
-  state.pity++;
+  store.incrementPity();
   let rarity;
   const rand = Math.random() * 100;
 
   // 保底判定
   if (state.pity >= CONFIG.PITY) {
     rarity = 6;
-    state.pity = 0;
+    store.setPity(0);
   } else if (rand < CONFIG.RATES[6]) {
     // 6星
     rarity = 6;
-    state.pity = 0;
+    store.setPity(0);
   } else if (rand < CONFIG.RATES[6] + CONFIG.RATES[5]) {
     // 5星
     rarity = 5;
@@ -30,63 +35,47 @@ function pull() {
   const [charName] = pool[Math.floor(Math.random() * pool.length)];
 
   // 添加到仓库或提升潜能
-  if (state.inventory[charName]) {
-    // 已有该干员 - 确保 potential 有默认值
-    const currentPotential = state.inventory[charName].potential || 1;
-    if (currentPotential < 13) {
-      state.inventory[charName].potential = currentPotential + 1;
-    } else {
-      // 满潜转金币
-      state.gold += CONFIG.GOLD_CONVERT[rarity];
-    }
-    state.inventory[charName].count++;
-  } else {
-    // 新干员
-    state.inventory[charName] = { count: 1, potential: 1 };
-  }
+  store.acquireCharacter(charName, rarity);
 
   return { rarity, name: charName };
 }
 
 // 单抽
-function gachaSingle() {
+export function gachaSingle() {
   if (state.tickets < 1) {
     alert('抽卡券不足！');
     return;
   }
-  state.tickets -= 1;
+  store.consumeTickets(1);
   const results = [pull()];
   showGachaResult(results);
   updateResourceUI();
-  saveState();
 }
 
 // 十连
-function gachaTen() {
+export function gachaTen() {
   if (state.tickets < 10) {
     alert('抽卡券不足！');
     return;
   }
-  state.tickets -= 10;
+  store.consumeTickets(10);
   const results = [];
   for (let i = 0; i < 10; i++) {
     results.push(pull());
   }
   showGachaResult(results);
   updateResourceUI();
-  saveState();
 }
 
 // 每日签到
-function dailyLogin() {
+export function dailyLogin() {
   const today = new Date().toDateString();
-  if (state.lastDaily === today) {
+  if (store.checkDaily(today)) {
     alert('今天已经签到过了！');
     return;
   }
-  state.lastDaily = today;
-  state.tickets += 100;
+  store.setDaily(today);
+  store.addTickets(100);
   alert('签到成功！+100抽卡券');
   updateResourceUI();
-  saveState();
 }

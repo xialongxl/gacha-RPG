@@ -1,0 +1,12 @@
+{
+  "name": "明日方舟：永恒回想录",
+  "short_name": "明日方舟：永恒回想录",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#1a1a2e",
+  "theme_color": "#16213e",
+  "description": "明日方舟主题的回合制RPG游戏",
+  "lang": "zh-CN",
+  "orientation": "any",
+  "icons": []
+}

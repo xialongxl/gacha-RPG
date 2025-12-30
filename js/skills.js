@@ -1,6 +1,12 @@
+// ==================== 技能系统 ====================
+
+import { battle } from './state.js';
+import { CONFIG } from './config.js';
+import { SummonSystem } from './summon.js';
+
 // ==================== 队长加成配置 ====================
 
-const LEADER_BONUS = {
+export const LEADER_BONUS = {
   '铃兰': {
     skill: '狐火渺然',
     costReduce: 10,
@@ -21,7 +27,7 @@ const LEADER_BONUS = {
 
 // ==================== 技能数据 ====================
 
-const SKILL_EFFECTS = {
+export const SKILL_EFFECTS = {
   // ========== 通用技能 ==========
   '普攻': {
     cost: 0,
@@ -537,7 +543,7 @@ const SKILL_EFFECTS = {
  * @param {Object} user - 使用者
  * @returns {number} 实际消耗
  */
-function getSkillCost(skillName, user) {
+export function getSkillCost(skillName, user) {
   const skill = SKILL_EFFECTS[skillName];
   if (!skill) return 0;
   
@@ -559,7 +565,7 @@ function getSkillCost(skillName, user) {
  * @param {Object} unit - 单位
  * @returns {number} 实际ATK
  */
-function getUnitAtk(unit) {
+export function getUnitAtk(unit) {
   let atk = unit.atk;
   
   // 固定值加成
@@ -581,6 +587,51 @@ function getUnitAtk(unit) {
 }
 
 /**
+ * 获取单位实际DEF（含buff，内部计算用）
+ */
+export function getUnitDef(unit) {
+  let def = unit.def;
+  
+  if (unit.shieldBroken) return 0;
+  
+  // 固定值加成
+  if (unit.buffDef) {
+    def += unit.buffDef;
+  }
+  
+  // 百分比加成
+  if (unit.buffDefPercent) {
+    def = Math.floor(def * (1 + unit.buffDefPercent / 100));
+  }
+  
+  return def;
+}
+
+/**
+ * 获取单位实际SPD（含buff，内部计算用）
+ */
+export function getUnitSpd(unit) {
+  let spd = unit.spd;
+  
+  // 固定值加成
+  if (unit.buffSpd) {
+    spd += unit.buffSpd;
+  }
+  
+  // 召唤物buff
+  if (unit.isSummon && unit.buffs && unit.buffs.spdFlat) {
+    spd += unit.buffs.spdFlat;
+  }
+  
+  // 百分比加成
+  if (unit.buffSpdPercent) {
+    spd = Math.floor(spd * (1 + unit.buffSpdPercent / 100));
+  }
+  
+  return spd;
+}
+
+/**
  * 执行技能效果
  * @param {Object} skill - 技能数据
  * @param {Object} user - 使用者
@@ -588,7 +639,7 @@ function getUnitAtk(unit) {
  * @param {boolean} isEnemy - 是否敌人使用
  * @returns {Object} 执行结果
  */
-function executeSkillEffects(skill, user, target, isEnemy) {
+export function executeSkillEffects(skill, user, target, isEnemy) {
   const result = {
     logs: [],
     deaths: [],
@@ -865,7 +916,7 @@ function getAffixMultiStrikeCount(unit, skillName) {
 /**
  * 处理回合开始时的词缀效果（回血等）
  */
-function processAffixTurnStart(unit, result) {
+export function processAffixTurnStart(unit, result) {
   if (!unit.affixes || unit.affixes.length === 0) return;
   
   // 回血词缀
@@ -901,7 +952,7 @@ function processAffixTurnStart(unit, result) {
 /**
  * 处理死亡时的词缀效果（分裂、爆炸）
  */
-function processAffixOnDeath(unit, result) {
+export function processAffixOnDeath(unit, result) {
   if (!unit.affixes || unit.affixes.length === 0) return [];
   
   const newUnits = [];
@@ -993,7 +1044,8 @@ function executeDamageEffect(effect, user, atk, target, effectTarget, isEnemy, r
   
   const calcDamage = (t) => {
     const shieldReduction = (t.currentShield > 0 && !t.shieldBroken) ? 0.5 : 1;
-    let dmg = Math.floor(effectiveAtk * effect.multiplier * shieldReduction - t.def * 0.5);
+    const def = getUnitDef(t);
+    let dmg = Math.floor(effectiveAtk * effect.multiplier * shieldReduction - def * 0.5);
     dmg = Math.floor(dmg * critMultiplier);  // 应用暴击
     return Math.max(1, dmg);
   };
@@ -1260,29 +1312,45 @@ function executeBuffEffect(effect, user, atk, effectTarget, isEnemy, result) {
   // 我方单位包含召唤物
   const allies = isEnemy ? battle.enemies : [...battle.allies, ...battle.summons];
   
-  let buffValue;
-  if (effect.value) {
-    buffValue = effect.value;
-  } else if (effect.multiplier) {
-    buffValue = Math.floor(user[effect.stat] * effect.multiplier);
-  }
-  
   const applyBuff = (t) => {
     const unitPrefix = t.isSummon ? '🔮' : '';
-    switch (effect.stat) {
-      case 'atk':
-        t.buffAtk = (t.buffAtk || 0) + buffValue;
-        result.logs.push({ text: `  → ${unitPrefix}${t.name} ATK +${buffValue}！`, type: 'system' });
-        break;
-      case 'spd':
-        // 使用buffSpd字段，以便在UI中显示
-        t.buffSpd = (t.buffSpd || 0) + buffValue;
-        result.logs.push({ text: `  → ${unitPrefix}${t.name} SPD +${buffValue}！`, type: 'system' });
-        break;
-      case 'def':
-        t.def += buffValue;
-        result.logs.push({ text: `  → ${unitPrefix}${t.name} DEF +${buffValue}！`, type: 'system' });
-        break;
+    let logText = '';
+    
+    // 百分比加成
+    if (effect.multiplier) {
+      const percent = Math.floor(effect.multiplier * 100);
+      switch (effect.stat) {
+        case 'atk':
+          t.buffAtkPercent = (t.buffAtkPercent || 0) + percent;
+          break;
+        case 'spd':
+          t.buffSpdPercent = (t.buffSpdPercent || 0) + percent;
+          break;
+        case 'def':
+          t.buffDefPercent = (t.buffDefPercent || 0) + percent;
+          break;
+      }
+      logText = `${effect.stat.toUpperCase()} +${percent}%`;
+    } 
+    // 固定值加成
+    else if (effect.value) {
+      const val = effect.value;
+      switch (effect.stat) {
+        case 'atk':
+          t.buffAtk = (t.buffAtk || 0) + val;
+          break;
+        case 'spd':
+          t.buffSpd = (t.buffSpd || 0) + val;
+          break;
+        case 'def':
+          t.buffDef = (t.buffDef || 0) + val;
+          break;
+      }
+      logText = `${effect.stat.toUpperCase()} +${val}`;
+    }
+    
+    if (logText) {
+      result.logs.push({ text: `  → ${unitPrefix}${t.name} ${logText}！`, type: 'system' });
     }
   };
   
@@ -1565,7 +1633,7 @@ function executeSelfBuffThenAttack(effect, user, result) {
  * 处理持续debuff的回合结束
  * 需要在battle.js的回合结束时调用
  */
-function processDurationDebuffs(unit) {
+export function processDurationDebuffs(unit) {
   if (!unit.durationDebuffs || unit.durationDebuffs.length === 0) return [];
   
   const logs = [];
@@ -1637,28 +1705,43 @@ function executeTeamBuffDuration(effect, user, isEnemy, result) {
     if (!ally.durationBuffs) ally.durationBuffs = [];
     
     let buffValue;
-    if (effect.value) {
+    let isPercent = false;
+    
+    if (effect.multiplier) {
+      buffValue = Math.floor(effect.multiplier * 100);
+      isPercent = true;
+    } else if (effect.value) {
       buffValue = effect.value;
-    } else if (effect.multiplier) {
-      buffValue = Math.floor(ally[effect.stat] * effect.multiplier);
     }
     
     // 添加持续buff
     ally.durationBuffs.push({
       stat: effect.stat,
       value: buffValue,
-      duration: effect.duration
+      duration: effect.duration,
+      isPercent: isPercent
     });
     
     // 立即应用buff
-    switch (effect.stat) {
-      case 'def':
-        ally.buffDef = (ally.buffDef || 0) + buffValue;
-        ally.def += buffValue;
-        break;
-      case 'dodge':
-        ally.dodgeChance = (ally.dodgeChance || 0) + buffValue;
-        break;
+    if (isPercent) {
+      switch (effect.stat) {
+        case 'def':
+          ally.buffDefPercent = (ally.buffDefPercent || 0) + buffValue;
+          break;
+        case 'dodge':
+          // 闪避率本身就是百分比，直接叠加数值
+          ally.dodgeChance = (ally.dodgeChance || 0) + buffValue;
+          break;
+      }
+    } else {
+      switch (effect.stat) {
+        case 'def':
+          ally.buffDef = (ally.buffDef || 0) + buffValue;
+          break;
+        case 'dodge':
+          ally.dodgeChance = (ally.dodgeChance || 0) + buffValue;
+          break;
+      }
     }
   });
   
@@ -1685,7 +1768,7 @@ function executeSanctuaryMode(user, result) {
 /**
  * 处理持续buff的回合结束
  */
-function processDurationBuffs(unit) {
+export function processDurationBuffs(unit) {
   if (!unit.durationBuffs || unit.durationBuffs.length === 0) return [];
   
   const logs = [];
@@ -1696,14 +1779,24 @@ function processDurationBuffs(unit) {
     
     if (buff.duration <= 0) {
       // buff到期，移除效果
-      switch (buff.stat) {
-        case 'def':
-          unit.def -= buff.value;
-          unit.buffDef = (unit.buffDef || 0) - buff.value;
-          break;
-        case 'dodge':
-          unit.dodgeChance = (unit.dodgeChance || 0) - buff.value;
-          break;
+      if (buff.isPercent) {
+        switch (buff.stat) {
+          case 'def':
+            unit.buffDefPercent = (unit.buffDefPercent || 0) - buff.value;
+            break;
+          case 'dodge':
+            unit.dodgeChance = (unit.dodgeChance || 0) - buff.value;
+            break;
+        }
+      } else {
+        switch (buff.stat) {
+          case 'def':
+            unit.buffDef = (unit.buffDef || 0) - buff.value;
+            break;
+          case 'dodge':
+            unit.dodgeChance = (unit.dodgeChance || 0) - buff.value;
+            break;
+        }
       }
       logs.push({ 
         text: `  → ${unit.name} 的${buff.stat === 'dodge' ? '闪避' : buff.stat.toUpperCase()}增益效果结束！`, 
@@ -1742,7 +1835,7 @@ function checkPlayerDodge(target, result) {
 /**
  * 处理充能技能的回合充能
  */
-function processChargeSkills(unit) {
+export function processChargeSkills(unit) {
   if (!unit.chargeSkills) return [];
   
   const logs = [];
@@ -1773,7 +1866,7 @@ function processChargeSkills(unit) {
 /**
  * 初始化充能技能
  */
-function initChargeSkills(unit) {
+export function initChargeSkills(unit) {
   if (!unit.skills) return;
   
   unit.chargeSkills = {};
@@ -1792,7 +1885,7 @@ function initChargeSkills(unit) {
 /**
  * 检查充能技能是否可用
  */
-function canUseChargeSkill(unit, skillName) {
+export function canUseChargeSkill(unit, skillName) {
   const skill = SKILL_EFFECTS[skillName];
   if (!skill || !skill.chargeSkill) return true;  // 非充能技能直接返回true
   
@@ -1806,7 +1899,7 @@ function canUseChargeSkill(unit, skillName) {
 /**
  * 消耗充能技能的充能
  */
-function consumeCharge(unit, skillName) {
+export function consumeCharge(unit, skillName) {
   if (!unit.chargeSkills || !unit.chargeSkills[skillName]) return;
   
   const skill = SKILL_EFFECTS[skillName];
@@ -1815,4 +1908,12 @@ function consumeCharge(unit, skillName) {
   if (unit.chargeSkills[skillName].charges > 0) {
     unit.chargeSkills[skillName].charges--;
   }
+}
+
+/**
+ * 播放技能动画（占位符）
+ */
+export function playSkillAnimation(userName, skillName) {
+  // console.log(`播放技能动画: ${userName} 使用 ${skillName}`);
+  // 实际动画逻辑可以在这里实现，或者调用UI系统的动画函数
 }
