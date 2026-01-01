@@ -1,9 +1,9 @@
 // ==================== 干员详情系统 ====================
 
-import { CHARACTER_DATA, applyPotentialBonus } from './data.js';
+import { CHARACTER_DATA } from './data.js';
 import { state } from './state.js';
-import { CONFIG } from './config.js';
-import { SKILL_EFFECTS, LEADER_BONUS } from './skills.js';
+import { CONFIG, applyPotentialBonus } from './config.js';
+import { SKILL_EFFECTS, LEADER_BONUS } from './skillData.js';
 import { SkinSystem } from './skin.js';
 import { showModal, clearSpineInstances } from './ui.js';
 import { clearTeamRenderCache, updateTeamUI } from './team.js';

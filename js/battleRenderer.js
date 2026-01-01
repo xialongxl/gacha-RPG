@@ -4,19 +4,39 @@
 import { battle } from './state.js';
 import { CONFIG } from './config.js';
 import { CHARACTER_DATA } from './data.js';
-import { 
-  addBattleLog, renderBattleLog, createSpineMedia, 
-  initSummonSideDrag, toggleSummonSideMinimize 
+import {
+  addBattleLog, renderBattleLog, createSpineMedia,
+  initSummonSideDrag, toggleSummonSideMinimize
 } from './ui.js';
 import { SkinSystem } from './skin.js';
 import { SummonSystem } from './summon.js';
-import { 
-  SKILL_EFFECTS, LEADER_BONUS, canUseChargeSkill 
-} from './skills.js';
-import { 
-  selectSkill, executePlayerSkill,
-  getUnitAtkDisplay, getUnitDefDisplay, getUnitSpd
-} from './battle.js';
+import {
+  SKILL_EFFECTS, LEADER_BONUS, canUseChargeSkill,
+  getUnitAtk, getUnitSpd, getUnitDef
+} from './skillCore.js';
+
+// 避免循环依赖：selectSkill 和 executePlayerSkill 通过延迟导入获取
+let _battleModule = null;
+async function getBattleModule() {
+  if (!_battleModule) {
+    _battleModule = await import('./battle.js');
+  }
+  return _battleModule;
+}
+
+// 同步获取 battle 模块（用于事件处理器，假设模块已加载）
+function getBattleModuleSync() {
+  return _battleModule;
+}
+
+// 属性显示函数（直接使用 skillCore 的函数）
+function getUnitAtkDisplay(unit) {
+  return getUnitAtk(unit);
+}
+
+function getUnitDefDisplay(unit) {
+  return getUnitDef(unit);
+}
 
 export const BattleRenderer = {
   // 已渲染的Spine容器ID记录
@@ -150,9 +170,9 @@ export const BattleRenderer = {
     let buffText = '';
     if (summon.buffs) {
       const buffList = [];
-      if (summon.buffs.atkPercent > 0) buffList.push(`ATK +${summon.buffs.atkPercent}%`);
+      if (summon.buffs.atkMultiplier > 0) buffList.push(`ATK +${Math.round(summon.buffs.atkMultiplier * 100)}%`);
       if (summon.buffs.spdFlat > 0) buffList.push(`SPD +${summon.buffs.spdFlat}`);
-      if (summon.buffs.healPerTurn > 0) buffList.push(`回血 ${summon.buffs.healPerTurn}%`);
+      if (summon.buffs.healPerTurn > 0) buffList.push(`回血 ${Math.round(summon.buffs.healPerTurn * 100)}%`);
       if (summon.buffs.doubleAttack) buffList.push('二连击');
       if (summon.buffs.stunOnHit) buffList.push('附带眩晕');
       if (buffList.length > 0) {
@@ -238,9 +258,9 @@ export const BattleRenderer = {
       let buffText = '';
       if (summon.buffs) {
         const buffList = [];
-        if (summon.buffs.atkPercent > 0) buffList.push(`ATK +${summon.buffs.atkPercent}%`);
+        if (summon.buffs.atkMultiplier > 0) buffList.push(`ATK +${Math.round(summon.buffs.atkMultiplier * 100)}%`);
         if (summon.buffs.spdFlat > 0) buffList.push(`SPD +${summon.buffs.spdFlat}`);
-        if (summon.buffs.healPerTurn > 0) buffList.push(`回血 ${summon.buffs.healPerTurn}%`);
+        if (summon.buffs.healPerTurn > 0) buffList.push(`回血 ${Math.round(summon.buffs.healPerTurn * 100)}%`);
         if (summon.buffs.doubleAttack) buffList.push('二连击');
         if (summon.buffs.stunOnHit) buffList.push('附带眩晕');
         buffText = buffList.join(' | ');
@@ -376,21 +396,21 @@ export const BattleRenderer = {
       let buffText = '';
       const buffList = [];
       if (unit.buffAtk && unit.buffAtk > 0) buffList.push(`ATK +${unit.buffAtk}`);
-      if (unit.buffAtkPercent && unit.buffAtkPercent > 0) buffList.push(`ATK +${unit.buffAtkPercent}%`);
+      if (unit.buffAtkMultiplier && unit.buffAtkMultiplier > 0) buffList.push(`ATK +${Math.round(unit.buffAtkMultiplier * 100)}%`);
       if (unit.buffSpd && unit.buffSpd > 0) buffList.push(`SPD +${unit.buffSpd}`);
-      if (unit.buffSpdPercent && unit.buffSpdPercent > 0) buffList.push(`SPD +${unit.buffSpdPercent}%`);
+      if (unit.buffSpdMultiplier && unit.buffSpdMultiplier > 0) buffList.push(`SPD +${Math.round(unit.buffSpdMultiplier * 100)}%`);
       if (unit.buffDef && unit.buffDef > 0) buffList.push(`DEF +${unit.buffDef}`);
-      if (unit.buffDefPercent && unit.buffDefPercent > 0) buffList.push(`DEF +${unit.buffDefPercent}%`);
-      if (unit.dodgeChance && unit.dodgeChance > 0) buffList.push(`闪避 +${unit.dodgeChance}%`);
+      if (unit.buffDefMultiplier && unit.buffDefMultiplier > 0) buffList.push(`DEF +${Math.round(unit.buffDefMultiplier * 100)}%`);
+      if (unit.dodgeChance && unit.dodgeChance > 0) buffList.push(`闪避 +${Math.round(unit.dodgeChance * 100)}%`);
       if (unit.healPerTurn && unit.healPerTurn > 0) {
         const dur = unit.healPerTurnDuration || '';
-        buffList.push(`回血 ${unit.healPerTurn}%${dur ? `(${dur}回合)` : ''}`);
+        buffList.push(`回血 ${Math.round(unit.healPerTurn * 100)}%${dur ? `(${dur}回合)` : ''}`);
       }
       
       if (unit.durationBuffs && unit.durationBuffs.length > 0) {
         unit.durationBuffs.forEach(buff => {
           let statName = buff.stat === 'dodge' ? '闪避' : buff.stat.toUpperCase();
-          let valueText = buff.isPercent ? `${buff.value}%` : `${buff.value}`;
+          let valueText = (buff.isPercent || buff.stat === 'dodge') ? `${Math.round(buff.value * 100)}%` : `${buff.value}`;
           if (buff.stat !== 'def' && buff.stat !== 'dodge') {
             buffList.push(`${statName} +${valueText}(${buff.duration}回合)`);
           }
@@ -491,20 +511,22 @@ export const BattleRenderer = {
       
       const buffList = [];
       if (unit.buffAtk && unit.buffAtk > 0) buffList.push(`ATK +${unit.buffAtk}`);
-      if (unit.buffAtkPercent && unit.buffAtkPercent > 0) buffList.push(`ATK +${unit.buffAtkPercent}%`);
+      if (unit.buffAtkMultiplier && unit.buffAtkMultiplier > 0) buffList.push(`ATK +${Math.round(unit.buffAtkMultiplier * 100)}%`);
       if (unit.buffSpd && unit.buffSpd > 0) buffList.push(`SPD +${unit.buffSpd}`);
       if (unit.buffDef && unit.buffDef > 0) buffList.push(`DEF +${unit.buffDef}`);
-      if (unit.dodgeChance && unit.dodgeChance > 0) buffList.push(`闪避 +${unit.dodgeChance}%`);
+      if (unit.buffDefMultiplier && unit.buffDefMultiplier > 0) buffList.push(`DEF +${Math.round(unit.buffDefMultiplier * 100)}%`);
+      if (unit.dodgeChance && unit.dodgeChance > 0) buffList.push(`闪避 +${Math.round(unit.dodgeChance * 100)}%`);
       if (unit.healPerTurn && unit.healPerTurn > 0) {
         const dur = unit.healPerTurnDuration || '';
-        buffList.push(`回血 ${unit.healPerTurn}%${dur ? `(${dur}回合)` : ''}`);
+        buffList.push(`回血 ${Math.round(unit.healPerTurn * 100)}%${dur ? `(${dur}回合)` : ''}`);
       }
       
       if (unit.durationBuffs && unit.durationBuffs.length > 0) {
         unit.durationBuffs.forEach(buff => {
           let statName = buff.stat === 'dodge' ? '闪避' : buff.stat.toUpperCase();
+          let valueText = (buff.isPercent || buff.stat === 'dodge') ? `${Math.round(buff.value * 100)}%` : `${buff.value}`;
           if (buff.stat !== 'def' && buff.stat !== 'dodge') {
-            buffList.push(`${statName} +${buff.value}(${buff.duration}回合)`);
+            buffList.push(`${statName} +${valueText}(${buff.duration}回合)`);
           }
         });
       }
@@ -605,7 +627,10 @@ export const BattleRenderer = {
       }
       
       if (canUse) {
-        btn.onclick = () => selectSkill(skillName, unit);
+        btn.onclick = async () => {
+          const battleModule = await getBattleModule();
+          battleModule.selectSkill(skillName, unit);
+        };
       }
       
       div.appendChild(btn);
@@ -636,9 +661,10 @@ export const BattleRenderer = {
         
         if (!isDisabled) {
           unitDiv.classList.add('selectable');
-          unitDiv.onclick = () => {
+          unitDiv.onclick = async () => {
             this.clearUnitSelection();
-            executePlayerSkill(battle.selectedSkill, enemy);
+            const battleModule = await getBattleModule();
+            battleModule.executePlayerSkill(battle.selectedSkill, enemy);
           };
         } else {
           unitDiv.classList.add('disabled-target');
@@ -667,7 +693,10 @@ export const BattleRenderer = {
       btn.textContent = `${tauntIcon}${enemy.name} (HP:${enemy.currentHp}${shieldInfo})${disabledText}`;
       
       if (!isDisabled) {
-        btn.onclick = () => executePlayerSkill(battle.selectedSkill, enemy);
+        btn.onclick = async () => {
+          const battleModule = await getBattleModule();
+          battleModule.executePlayerSkill(battle.selectedSkill, enemy);
+        };
       }
       
       div.appendChild(btn);
@@ -691,7 +720,10 @@ export const BattleRenderer = {
       const btn = document.createElement('button');
       btn.className = 'target-btn ally';
       btn.textContent = `${ally.name} (HP:${ally.currentHp})`;
-      btn.onclick = () => executePlayerSkill(battle.selectedSkill, ally);
+      btn.onclick = async () => {
+        const battleModule = await getBattleModule();
+        battleModule.executePlayerSkill(battle.selectedSkill, ally);
+      };
       div.appendChild(btn);
     });
     
@@ -699,7 +731,10 @@ export const BattleRenderer = {
       const btn = document.createElement('button');
       btn.className = 'target-btn ally summon';
       btn.textContent = `🔮${summon.name} (HP:${summon.currentHp})`;
-      btn.onclick = () => executePlayerSkill(battle.selectedSkill, summon);
+      btn.onclick = async () => {
+        const battleModule = await getBattleModule();
+        battleModule.executePlayerSkill(battle.selectedSkill, summon);
+      };
       div.appendChild(btn);
     });
   },

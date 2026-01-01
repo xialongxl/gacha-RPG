@@ -15,7 +15,7 @@
 
 import { SmartAI } from './smartAI.js';
 import { battle } from '../state.js';
-import { SKILL_EFFECTS } from '../skills.js';
+import { SKILL_EFFECTS } from '../skillData.js';
 import { EndlessMode } from './endless.js';
 
 export const SmartAI_Battle = {

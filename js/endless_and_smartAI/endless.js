@@ -2,9 +2,9 @@
 
 console.log('🔄 无尽模式模块加载中...');
 
-import { CHARACTER_DATA, applyPotentialBonus } from '../data.js';
+import { CHARACTER_DATA } from '../data.js';
 import { state, store, GameDB, battle, resetBattle } from '../state.js';
-import { CONFIG } from '../config.js';
+import { CONFIG, applyPotentialBonus } from '../config.js';
 import { calculateTurnOrder, nextTurn } from '../battle.js';
 import { BattleRenderer } from '../battleRenderer.js';
 import { showModal, closeModal, updateResourceUI, addBattleLog, closeBattleField } from '../ui.js';

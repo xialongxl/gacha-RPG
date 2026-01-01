@@ -1,6 +1,6 @@
 // ==================== 深度学习AI系统 ====================
 
-import { SKILL_EFFECTS } from '../skills.js';
+import { SKILL_EFFECTS } from '../skillData.js';
 
 // 初始化数据库 - V3加入训练数据版本追踪
 export const SmartAI_DB = new Dexie('SmartAI_Database');

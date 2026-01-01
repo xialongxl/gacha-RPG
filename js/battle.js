@@ -16,12 +16,13 @@ import { getEnemyDecision } from './enemyAI.js';
 import { SummonSystem } from './summon.js';
 import { EndlessMode } from './endless_and_smartAI/endless.js';
 import { SmartAI_Battle } from './endless_and_smartAI/smartAI_battle.js';
-import { 
+import {
   SKILL_EFFECTS, executeSkillEffects, LEADER_BONUS,
   initChargeSkills, canUseChargeSkill, consumeCharge, processChargeSkills,
   processDurationBuffs, processDurationDebuffs, playSkillAnimation,
-  processAffixOnDeath, processAffixTurnStart
-} from './skills.js';
+  processAffixOnDeath, processAffixTurnStart,
+  getUnitAtk, getUnitSpd as _getUnitSpd, getUnitDef
+} from './skillCore.js';
 
 // 已渲染的Spine容器ID记录 (保留导出以防其他模块依赖，但不再使用)
 export const renderedSpineUnits = new Set();
@@ -80,7 +81,7 @@ export function startBattle(stage) {
       energy: 0,
       maxEnergy: 100,
       buffAtk: 0,
-      buffAtkPercent: 0,      // 百分比ATK加成（召唤技能用）
+      buffAtkMultiplier: 0,   // ATK倍率加成（召唤技能用，小数）
       buffSpd: 0,             // SPD加成（召唤技能用）
       stunDuration: 0,
       isEnemy: false,
@@ -104,7 +105,7 @@ export function startBattle(stage) {
     energy: 0,
     maxEnergy: 100,
     buffAtk: 0,
-    buffAtkPercent: 0,
+    buffAtkMultiplier: 0,
     buffSpd: 0,
     stunDuration: 0,
     shield: e.shield || 0,
@@ -158,72 +159,19 @@ export function calculateTurnOrder() {
   });
 }
 
-// 获取单位实际SPD（含buff）
+// ==================== 属性获取函数（从 skillCore.js 统一导入） ====================
+// 重新导出供 battleRenderer.js 使用，保持向后兼容
+
 export function getUnitSpd(unit) {
-  let spd = unit.spd;
-  
-  // 固定值加成
-  if (unit.buffSpd) {
-    spd += unit.buffSpd;
-  }
-  
-  // 召唤物的buff
-  if (unit.isSummon && unit.buffs) {
-    spd += unit.buffs.spdFlat || 0;
-  }
-  
-  // 百分比加成
-  if (unit.buffSpdPercent) {
-    spd = Math.floor(spd * (1 + unit.buffSpdPercent / 100));
-  }
-  
-  return spd;
+  return _getUnitSpd(unit);
 }
 
-// 获取单位实际ATK（含buff）
 export function getUnitAtkDisplay(unit) {
-  let atk = unit.atk;
-  
-  // 固定值加成
-  if (unit.buffAtk) {
-    atk += unit.buffAtk;
-  }
-  
-  // 百分比加成
-  if (unit.buffAtkPercent) {
-    atk = Math.floor(atk * (1 + unit.buffAtkPercent / 100));
-  }
-  
-  // 召唤物的buff
-  if (unit.isSummon && unit.buffs) {
-    if (unit.buffs.atkPercent > 0) {
-      atk = Math.floor(atk * (1 + unit.buffs.atkPercent / 100));
-    }
-  }
-  
-  return atk;
+  return getUnitAtk(unit);
 }
 
-// 获取单位实际DEF（含buff/debuff）
 export function getUnitDefDisplay(unit) {
-  let def = unit.def;
-  
-  // DEF debuff（护盾破碎时为0）
-  if (unit.shieldBroken) {
-    return 0;
-  }
-  
-  // 固定值加成
-  if (unit.buffDef) {
-    def += unit.buffDef;
-  }
-  
-  // 百分比加成
-  if (unit.buffDefPercent) {
-    def = Math.floor(def * (1 + unit.buffDefPercent / 100));
-  }
-  
-  return def;
+  return getUnitDef(unit);
 }
 
 // ==================== 战斗渲染 (代理到 BattleRenderer) ====================
@@ -476,7 +424,7 @@ export function nextTurn() {
   
   // ====== 干员每回合回血处理（生态耦合等技能） ======
   if (!current.isEnemy && !current.isSummon && current.healPerTurn && current.healPerTurn > 0) {
-    const healAmount = Math.floor(current.maxHp * current.healPerTurn / 100);
+    const healAmount = Math.floor(current.maxHp * current.healPerTurn);
     const oldHp = current.currentHp;
     current.currentHp = Math.min(current.maxHp, current.currentHp + healAmount);
     const actualHeal = current.currentHp - oldHp;

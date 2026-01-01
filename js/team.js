@@ -6,7 +6,7 @@ import { CONFIG, applyPotentialBonus } from './config.js';
 import { createSpineMedia } from './ui.js';
 import { showCharDetail } from './charDetail.js';
 import { SkinSystem } from './skin.js';
-import { LEADER_BONUS } from './skills.js';
+import { LEADER_BONUS } from './skillData.js';
 
 // 记录上次渲染的队伍状态
 let lastRenderedTeam = null;

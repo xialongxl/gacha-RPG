@@ -1,6 +1,34 @@
 // ==================== 敌人AI系统 ====================
 
-import { SKILL_EFFECTS } from './skills.js';
+import { SKILL_EFFECTS } from './skillData.js';
+
+// ==================== 技能目标处理器映射表 ====================
+
+/**
+ * 技能目标类型 -> 处理函数的映射表
+ * 每个处理器接收 ctx 上下文对象，返回 { target, strategy }
+ */
+const TARGET_HANDLERS = {
+  single: (ctx) => ({
+    target: chooseTarget(ctx.enemy, ctx.aliveAllies),
+    strategy: null  // 稍后由 getStrategy 决定
+  }),
+  
+  ally_lowest: (ctx) => ({
+    target: ctx.aliveEnemies.reduce((a, b) =>
+      (a.currentHp / a.maxHp) < (b.currentHp / b.maxHp) ? a : b
+    ),
+    strategy: '治疗'
+  }),
+  
+  all_enemy: () => ({ target: null, strategy: '群攻' }),
+  all: () => ({ target: null, strategy: '群攻' }),
+  all_ally_enemy: () => ({ target: null, strategy: '群疗' }),
+  self: () => ({ target: null, strategy: '强化' }),
+  random2: () => ({ target: null, strategy: '连击' }),
+  random3: () => ({ target: null, strategy: '连击' }),
+  random6: () => ({ target: null, strategy: '连击' })
+};
 
 /**
  * 获取敌人决策
@@ -12,35 +40,18 @@ import { SKILL_EFFECTS } from './skills.js';
 export function getEnemyDecision(enemy, aliveAllies, aliveEnemies) {
   const skill = chooseEnemySkill(enemy, aliveAllies, aliveEnemies);
   
-  let target = null;
-  let strategy = '攻击';
+  // 构建上下文
+  const ctx = { enemy, aliveAllies, aliveEnemies, skill };
   
-  // 根据技能目标类型选择目标
-  switch (skill.target) {
-    case 'single':
-      target = chooseTarget(enemy, aliveAllies);
-      strategy = getStrategy(enemy, target, aliveAllies);
-      break;
-    case 'ally_lowest':
-      target = aliveEnemies.reduce((a, b) => 
-        (a.currentHp / a.maxHp) < (b.currentHp / b.maxHp) ? a : b
-      );
-      strategy = '治疗';
-      break;
-    case 'all_enemy':
-    case 'all':
-      strategy = '群攻';
-      break;
-    case 'all_ally_enemy':
-      strategy = '群疗';
-      break;
-    case 'self':
-      strategy = '强化';
-      break;
-    case 'random2':
-    case 'random3':
-      strategy = '连击';
-      break;
+  // 根据技能目标类型选择处理器
+  const handler = TARGET_HANDLERS[skill.target];
+  let target = null;
+  let strategy = '攻击';  // 默认策略
+  
+  if (handler) {
+    const result = handler(ctx);
+    target = result.target;
+    strategy = result.strategy || getStrategy(enemy, target, aliveAllies);
   }
   
   return { skill, target, strategy };

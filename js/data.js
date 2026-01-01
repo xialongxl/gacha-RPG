@@ -24,22 +24,8 @@ export function processCharacterData(data) {
   return processed;
 }
 
-// ==================== 潜能加成计算 ====================
-
-/**
- * 计算潜能加成后的属性
- * @param {number} value - 基础属性值
- * @param {number} potential - 潜能等级 (1-6)
- * @returns {number} 加成后的属性值
- */
-export function applyPotentialBonus(value, potential) {
-  if (!potential || potential <= 1) return value;
-  // 每级潜能增加 2% 属性
-  const bonus = 1 + (potential - 1) * 0.02;
-  return Math.floor(value * bonus);
-}
-
 // ==================== 干员原始数据 ====================
+// 注意：applyPotentialBonus 函数已移至 config.js，统一管理
 
 export const CHARACTER_DATA_RAW = {
   // ========== 6星 ==========
@@ -285,6 +271,31 @@ export const CHARACTER_DATA_RAW = {
 
 // 处理后的干员数据
 export const CHARACTER_DATA = processCharacterData(CHARACTER_DATA_RAW);
+
+// ==================== 召唤物数据 ====================
+
+export const SUMMON_DATA = {
+  '缪尔赛思': {
+    name: '流形',
+    spine: {
+      skel: 'spine/token_10030_mlyss_wtrman/token_10030_mlyss_wtrman.skel',
+      atlas: 'spine/token_10030_mlyss_wtrman/token_10030_mlyss_wtrman.atlas',
+      animation: 'B_Idle'
+    },
+    art: null
+  },
+  '凯尔希': {
+    name: 'Mon3tr',
+    spine: null,
+    art: null
+  },
+  '深海色': {
+    name: '触手',
+    spine: null,
+    art: null
+  }
+  // 后续添加更多召唤师的召唤物数据
+};
 
 // ==================== 关卡数据 ====================
 

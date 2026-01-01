@@ -1,6 +1,7 @@
 // ==================== 召唤系统 ====================
 
 import { CONFIG } from './config.js';
+import { SUMMON_DATA } from './data.js';
 
 export const SummonSystem = {
   // 当前战斗中的召唤物列表
@@ -114,9 +115,9 @@ export const SummonSystem = {
       
       // 召唤物专属buff
       buffs: {
-        atkPercent: 0,      // ATK百分比加成（技能叠加）
+        atkMultiplier: 0,   // ATK百分比加成（技能叠加，小数）
         spdFlat: 0,         // SPD固定值加成（技能叠加）
-        healPerTurn: 0,     // 每回合回血百分比
+        healPerTurn: 0,     // 每回合回血百分比（小数）
         doubleAttack: false, // 二连击
         stunOnHit: false    // 攻击附带眩晕
       },
@@ -147,31 +148,8 @@ export const SummonSystem = {
   
   // 获取召唤物基础数据（名称、外观等）
   getSummonData(owner) {
-    // 根据召唤师返回对应召唤物数据
-    const summonMap = {
-      '缪尔赛思': {
-        name: '流形',
-        spine: {
-          skel: 'spine/token_10030_mlyss_wtrman/token_10030_mlyss_wtrman.skel',
-          atlas: 'spine/token_10030_mlyss_wtrman/token_10030_mlyss_wtrman.atlas',
-          animation: 'B_Idle'
-      },
-        art: null
-      },
-      '凯尔希': {
-        name: 'Mon3tr',
-        spine: null,
-        art: null
-      },
-      '深海色': {
-        name: '触手',
-        spine: null,
-        art: null
-      }
-      // 后续添加更多召唤师
-    };
-    
-    return summonMap[owner.name] || { name: `${owner.name}的召唤物` };
+    // 从 data.js 的 SUMMON_DATA 获取召唤物数据
+    return SUMMON_DATA[owner.name] || { name: `${owner.name}的召唤物` };
   },
   
   // ==================== 召唤师行动处理 ====================
@@ -314,14 +292,14 @@ export const SummonSystem = {
     const summons = this.getSummonsByOwner(owner);
     summons.forEach(summon => {
       switch (buffType) {
-        case 'atkPercent':
-          summon.buffs.atkPercent += value;
+        case 'atkMultiplier':
+          summon.buffs.atkMultiplier += value;
           break;
         case 'spdFlat':
           summon.buffs.spdFlat += value;
           break;
         case 'healPerTurn':
-          summon.buffs.healPerTurn = value;  // 不叠加，覆盖
+          summon.buffs.healPerTurn = value;  // 不叠加，覆盖（小数）
           if (duration > 0) summon.buffDurations.healPerTurn = duration;
           break;
         case 'doubleAttack':
@@ -339,8 +317,8 @@ export const SummonSystem = {
   // 给召唤者自己也加buff（技能同时影响召唤者）
   addBuffToOwner(owner, buffType, value, duration = 0) {
     switch (buffType) {
-      case 'atkPercent':
-        owner.buffAtkPercent = (owner.buffAtkPercent || 0) + value;
+      case 'atkMultiplier':
+        owner.buffAtkMultiplier = (owner.buffAtkMultiplier || 0) + value;
         break;
       case 'spdFlat':
         owner.buffSpd = (owner.buffSpd || 0) + value;
@@ -356,8 +334,8 @@ export const SummonSystem = {
   // 获取召唤物实际ATK（含buff）
   getSummonAtk(summon) {
     const baseAtk = summon.atk;
-    const percentBonus = (summon.buffs.atkPercent || 0) / 100;
-    return Math.floor(baseAtk * (1 + percentBonus));
+    const mult = summon.buffs.atkMultiplier || 0;
+    return Math.floor(baseAtk * (1 + mult));
   },
   
   // 获取召唤物实际SPD（含buff）
@@ -371,7 +349,7 @@ export const SummonSystem = {
     
     // 每回合回血
     if (summon.buffs.healPerTurn > 0) {
-      const healAmount = Math.floor(summon.maxHp * summon.buffs.healPerTurn / 100);
+      const healAmount = Math.floor(summon.maxHp * summon.buffs.healPerTurn);
       const oldHp = summon.currentHp;
       summon.currentHp = Math.min(summon.maxHp, summon.currentHp + healAmount);
       result.healed = summon.currentHp - oldHp;
