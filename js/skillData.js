@@ -10,14 +10,28 @@ export const LEADER_BONUS = {
     healBonus: 0.05,
     debuffBonus: 0.05,
     extraEffects: [
-      { type: 'buff', stat: 'atk', multiplier: 0.1, target: 'all_ally' }
+      { type: 'buff', stat: 'atk', multiplier: 0.1, target: 'all_ally', desc: '全队攻击力+10%' }
     ]
   },
   '缪尔赛思': {
     skill: '浅层非熵适应',
     costReduce: 10,
     extraEffects: [
-      { type: 'summon_buff', buffType: 'atkMultiplier', value: 0.1 }  // 额外+10% ATK给召唤物
+      { type: 'summon_buff', buffType: 'atkMultiplier', value: 0.1, desc: '召唤物攻击力+10%' }
+    ]
+  },
+  '艾雅法拉': {
+    skill: '火山',
+    costReduce: 10,
+    extraEffects: [
+      { type: 'debuff_duration', stat: 'def', multiplier: 0.25, duration: 2, desc: '目标DEF-25%（持续2回合）' }
+    ]
+  },
+    '夜莺': {
+    skill: '圣域',
+    costReduce: 10,
+    extraEffects: [
+      { type: 'team_temp_shield', multiplier: 1.0, desc: '为全体队友施加护盾（100%ATK）'}
     ]
   }
 };
@@ -143,7 +157,7 @@ export const SKILL_EFFECTS = {
     cost: 30,
     gain: 0,
     target: 'single',
-    desc: '消耗30能量，造成370%伤害，周围敌人受185%溅射伤害，目标DEF-25%持续2回合',
+    desc: '消耗30能量，造成370%伤害，周围敌人受185%溅射伤害，目标DEF-25%（持续2回合）',
     effects: [
       { type: 'damage', multiplier: 3.7 },
       { type: 'splash_damage', multiplier: 1.85 },
@@ -260,11 +274,11 @@ export const SKILL_EFFECTS = {
   },
 
   // ========== 夜莺专属技能 ==========
-  '医疗普攻': {
+  '疗愈': {
     cost: 0,
     gain: 30,
     target: 'ally',
-    desc: '治疗选定的队友，恢复100%攻击力HP，获得30能量',
+    desc: '治疗选定的队友，恢复目标等同于100%攻击力的HP，并获得30能量',
     effects: [
       { type: 'heal', multiplier: 1.0 }
     ]
@@ -273,7 +287,7 @@ export const SKILL_EFFECTS = {
     cost: 30,
     gain: 0,
     target: 'self',
-    desc: '消耗30能量，自身ATK+90%（可叠加），大幅提升治疗强度',
+    desc: '消耗30能量，自身ATK+90%（可叠加），大幅提升自身治疗强度',
     effects: [
       { type: 'buff', stat: 'atk', multiplier: 0.9 }
     ]
@@ -282,10 +296,10 @@ export const SKILL_EFFECTS = {
     cost: 50,
     gain: 0,
     target: 'all_ally',
-    chargeSkill: true,      // 充能技能标记
-    maxCharges: 3,          // 最大充能层数
-    chargeInterval: 2,      // 每2回合获得1层充能
-    desc: '消耗50能量和1层充能，为全体队友施加护盾（90%ATK），DEF+20%持续3回合',
+    //chargeSkill: true,      // 充能技能标记
+    //maxCharges: 3,          // 最大充能层数
+    //chargeInterval: 2,      // 每2回合获得1层充能
+    desc: '消耗50能量，为全体队友施加护盾（90%ATK），DEF+20%（持续3回合）',
     effects: [
       { type: 'team_temp_shield', multiplier: 0.9 },
       { type: 'team_buff_duration', stat: 'def', multiplier: 0.2, duration: 3 }
@@ -295,7 +309,7 @@ export const SKILL_EFFECTS = {
     cost: 80,
     gain: 0,
     target: 'self',
-    desc: '消耗80能量，ATK+80%，普攻变为群体治疗，全体队友获得25%闪避率+DEF+50%（3回合）',
+    desc: '消耗80能量，ATK+80%，疗愈变为全体疗愈，全体队友获得25%闪避率+DEF+50%（持续3回合）',
     effects: [
       { type: 'buff', stat: 'atk', multiplier: 0.8 },
       { type: 'sanctuary_mode' },
@@ -357,7 +371,7 @@ export const SKILL_EFFECTS = {
     cost: 70,
     gain: 0,
     target: 'all',
-    desc: '消耗70能量，全体队友回复20%攻击力的HP，敌人全体减速30%(2回合)',
+    desc: '消耗70能量，全体队友回复20%攻击力的HP，敌人全体减速30%（持续2回合）',
     effects: [
       { type: 'heal', multiplier: 0.2, target: 'all_ally' },
       { type: 'debuff_duration', stat: 'spd', multiplier: 0.3, target: 'all_enemy', duration: 2 }
@@ -394,7 +408,7 @@ export const SKILL_EFFECTS = {
     cost: 70,
     gain: 0,
     target: 'self',
-    desc: '消耗70能量，全队回复25能量，自身与流形ATK+50%，流形普攻附带眩晕(持续2回合)',
+    desc: '消耗70能量，全队回复25能量，自身与流形ATK+50%，流形普攻附带眩晕（持续2回合）',
     effects: [
       { type: 'team_energy', amount: 25 },
       { type: 'owner_buff', buffType: 'atkMultiplier', value: 0.5 },

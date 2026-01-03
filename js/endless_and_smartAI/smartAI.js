@@ -1,62 +1,29 @@
-// ==================== 深度学习AI系统 ====================
+
+// ==================== TensorFlow.js 深度学习AI系统 ====================
+//
+// 使用 TensorFlow.js 重写的 SmartAI 系统
+// 特性：
+// - 自动微分（不再需要手写反向传播）
+// - GPU 加速（通过 WebGL backend）
+// - Experience Replay（经验回放）
+// - ε-greedy 衰减探索策略
+// - 改进的奖励塑形
+// - 模型自动保存/加载到 IndexedDB
+//
+// ========================================================================
 
 import { SKILL_EFFECTS } from '../skillData.js';
+import { CHARACTER_DATA } from '../data.js';
+import { SmartAI_DB, AFFIX_LIST, BUFF_LIST, DEBUFF_STAT_LIST, CLASS_LIST, CLASS_PRIORITY_REWARD, AI_CONFIG } from './smartAI_data.js';
 
-// 初始化数据库 - V3加入训练数据版本追踪
-export const SmartAI_DB = new Dexie('SmartAI_Database');
-
-// V2: 词缀支持
-SmartAI_DB.version(2).stores({
-  battles: '++id, timestamp, result, totalTurns, playerTeam, floor',
-  trainingData: '++id, battleId, turn, state, action, result',
-  modelParams: 'id, weights, updatedAt, version'
-});
-
-// V3: 训练数据增加版本字段，用于精确版本控制
-SmartAI_DB.version(3).stores({
-  battles: '++id, timestamp, result, totalTurns, playerTeam, floor, dataVersion',
-  trainingData: '++id, battleId, turn, state, action, result, dataVersion',
-  modelParams: 'id, weights, updatedAt, version'
-}).upgrade(tx => {
-  // 升级时给现有数据添加版本号（假设是V3之前的数据，标记为V3以便保留）
-  // 因为用户可能刚用V4收集了数据，不能随便删除
-  return tx.table('trainingData').toCollection().modify(data => {
-    if (data.dataVersion === undefined) {
-      // 无法确定版本，标记为0表示需要检查
-      data.dataVersion = 0;
-    }
-  });
-});
-
-// 词缀列表（用于特征编码）
-const AFFIX_LIST = [
-  'thorns', 'regen', 'berserk', 'multiStrike', 'swift', 'fortify',
-  'dodge', 'shield', 'vampiric', 'aura', 'undying', 'split', 'explosion'
-];
-
-// Roguelike强化列表（用于特征编码）
-const BUFF_LIST = [
-  // stat类型
-  'atkUp', 'defUp', 'hpUp', 'spdUp',
-  // special类型
-  'critUp', 'vampUp', 'shield', 'extraLife'
-];
-
-// 持续效果类型列表（用于特征编码）
-const DEBUFF_STAT_LIST = ['atk', 'def', 'spd'];
+// 重新导出数据库供其他模块使用
+export { SmartAI_DB };
 
 // ==================== 核心AI对象 ====================
 
 export const SmartAI = {
-  // 配置
-  config: {
-    MIN_BATTLES_TO_TRAIN: 20,    // 最少20场战斗后开始训练
-    LEARNING_RATE: 0.01,
-    BATCH_SIZE: 32,
-    EPOCHS: 10,
-    IMITATE_WEIGHT: 0.6,         // 模仿玩家权重
-    COUNTER_WEIGHT: 0.4          // 反制玩家权重
-  },
+  // 配置（从数据模块导入）
+  config: AI_CONFIG,
   
   // 模型状态
   model: null,
@@ -64,24 +31,64 @@ export const SmartAI = {
   battleCount: 0,
   currentBattleId: null,
   currentTurn: 0,
+  epsilon: 1.0,                   // 当前探索率
+  trainingHistory: [],            // 训练历史
+  
+  // 模型版本
+  // V6: 添加职业 one-hot 编码到特征，添加职业优先级奖励
+  MODEL_VERSION: 6,
   
   // ==================== 初始化 ====================
   
   async init() {
-    console.log('🧠 SmartAI 初始化...');
+    console.log('🧠 SmartAI (TensorFlow.js) 初始化...');
     
-    // 先检查模型版本（特征维度变化需要清除旧数据）
+    // 检查 TensorFlow.js 是否可用
+    if (typeof tf === 'undefined') {
+      console.error('❌ TensorFlow.js 未加载！');
+      return this;
+    }
+    
+    console.log(`📦 TensorFlow.js 版本: ${tf.version.tfjs}`);
+    
+    // 等待后端初始化完成
+    try {
+      await tf.ready();
+      console.log(`🖥️ Backend: ${tf.getBackend()}`);
+    } catch (e) {
+      console.error('❌ TensorFlow.js 后端初始化失败:', e);
+      // 尝试设置 CPU 后端作为后备
+      try {
+        await tf.setBackend('cpu');
+        await tf.ready();
+        console.log(`🖥️ Backend (fallback): ${tf.getBackend()}`);
+      } catch (e2) {
+        console.error('❌ CPU 后端也失败:', e2);
+        return this;
+      }
+    }
+    
+    // 检查模型版本
     await this.checkModelVersion();
     
     // 获取战斗统计
     this.battleCount = await SmartAI_DB.battles.count();
     console.log(`📊 历史战斗记录: ${this.battleCount} 场`);
     
+    // 恢复探索率
+    this.epsilon = Math.max(
+      this.config.EPSILON_END,
+      this.config.EPSILON_START * Math.pow(this.config.EPSILON_DECAY, this.battleCount)
+    );
+    console.log(`🎲 当前探索率: ${(this.epsilon * 100).toFixed(1)}%`);
+    
     // 如果有足够数据，加载或训练模型
     if (this.battleCount >= this.config.MIN_BATTLES_TO_TRAIN) {
       await this.loadOrTrainModel();
     } else {
       console.log(`⏳ 需要 ${this.config.MIN_BATTLES_TO_TRAIN - this.battleCount} 场更多战斗数据`);
+      // 创建新模型但不训练
+      this.model = this.createModel();
     }
     
     return this;
@@ -91,84 +98,96 @@ export const SmartAI = {
   async checkModelVersion() {
     const saved = await SmartAI_DB.modelParams.get('main');
     
-    // 1. 检查保存的模型版本
     if (saved) {
       const savedVersion = saved.version || 1;
       if (savedVersion < this.MODEL_VERSION) {
         console.log(`⚠️ 检测到旧版本模型 (V${savedVersion} → V${this.MODEL_VERSION})`);
-        console.log('🔄 特征维度已更新，自动清除旧数据...');
+        console.log('🔄 TensorFlow.js 版本更新，清除旧数据...');
         await this.clearAllData();
-        console.log('✅ 旧数据已清除，请重新进行无尽模式战斗以收集新数据！');
+        console.log('✅ 旧数据已清除，请重新进行无尽模式战斗！');
         return;
       }
     }
     
-    // 2. 精确检查训练数据版本（基于 dataVersion 字段）
-    // 查找版本低于当前版本的旧数据
-    const oldTrainingData = await SmartAI_DB.trainingData
-      .filter(data => {
-        const version = data.dataVersion;
-        // dataVersion 为 undefined、null、0 或小于当前版本的数据都是旧数据
-        return version === undefined || version === null || version === 0 || version < this.MODEL_VERSION;
-      })
+    // 清除旧版本训练数据
+    const oldData = await SmartAI_DB.trainingData
+      .filter(d => !d.dataVersion || d.dataVersion < this.MODEL_VERSION)
       .count();
     
-    if (oldTrainingData > 0) {
-      console.log(`⚠️ 检测到 ${oldTrainingData} 条旧版本训练数据 (V<${this.MODEL_VERSION})，正在清除...`);
-      
-      // 只删除旧版本数据，保留当前版本数据
+    if (oldData > 0) {
+      console.log(`🗑️ 清除 ${oldData} 条旧版本数据...`);
       await SmartAI_DB.trainingData
-        .filter(data => {
-          const version = data.dataVersion;
-          return version === undefined || version === null || version === 0 || version < this.MODEL_VERSION;
-        })
+        .filter(d => !d.dataVersion || d.dataVersion < this.MODEL_VERSION)
         .delete();
-      
-      // 同时清除对应的旧战斗记录
-      const oldBattles = await SmartAI_DB.battles
-        .filter(battle => {
-          const version = battle.dataVersion;
-          return version === undefined || version === null || version === 0 || version < this.MODEL_VERSION;
-        })
-        .count();
-      
-      if (oldBattles > 0) {
-        await SmartAI_DB.battles
-          .filter(battle => {
-            const version = battle.dataVersion;
-            return version === undefined || version === null || version === 0 || version < this.MODEL_VERSION;
-          })
-          .delete();
-        console.log(`🗑️ 已清除 ${oldBattles} 条旧版本战斗记录`);
-      }
-      
-      // 如果模型是基于旧数据训练的，也需要清除
-      if (saved && (saved.version || 1) < this.MODEL_VERSION) {
-        await SmartAI_DB.modelParams.delete('main');
-        this.model = null;
-        this.isModelReady = false;
-        console.log('🗑️ 已清除旧版本模型');
-      }
-      
-      console.log('✅ 旧数据清除完成！当前版本数据已保留。');
-      
-      // 统计剩余数据
-      const remainingData = await SmartAI_DB.trainingData.count();
-      const remainingBattles = await SmartAI_DB.battles.count();
-      console.log(`📊 剩余数据: ${remainingBattles} 场战斗, ${remainingData} 条训练数据`);
+      await SmartAI_DB.battles
+        .filter(b => !b.dataVersion || b.dataVersion < this.MODEL_VERSION)
+        .delete();
     }
+  },
+  
+  // ==================== TensorFlow.js 模型 ====================
+  
+  // 创建神经网络模型
+  createModel() {
+    console.log('🏗️ 创建 TensorFlow.js 神经网络模型...');
+    
+    const model = tf.sequential();
+    
+    // 输入层 + 隐藏层1
+    model.add(tf.layers.dense({
+      inputShape: [this.config.INPUT_SIZE],
+      units: this.config.HIDDEN_UNITS_1,
+      activation: 'relu',
+      kernelInitializer: 'heNormal',
+      kernelRegularizer: tf.regularizers.l2({ l2: 0.001 })
+    }));
+    model.add(tf.layers.batchNormalization());
+    model.add(tf.layers.dropout({ rate: this.config.DROPOUT_RATE }));
+    
+    // 隐藏层2
+    model.add(tf.layers.dense({
+      units: this.config.HIDDEN_UNITS_2,
+      activation: 'relu',
+      kernelInitializer: 'heNormal'
+    }));
+    model.add(tf.layers.batchNormalization());
+    model.add(tf.layers.dropout({ rate: this.config.DROPOUT_RATE }));
+    
+    // 隐藏层3
+    model.add(tf.layers.dense({
+      units: this.config.HIDDEN_UNITS_3,
+      activation: 'relu',
+      kernelInitializer: 'heNormal'
+    }));
+    
+    // 输出层（技能 + 目标 = 18维）
+    model.add(tf.layers.dense({
+      units: this.config.SKILL_OUTPUT + this.config.TARGET_OUTPUT,
+      activation: 'linear'  // 使用 linear，后面手动 softmax
+    }));
+    
+    // 编译模型
+    model.compile({
+      optimizer: tf.train.adam(this.config.LEARNING_RATE),
+      loss: 'categoricalCrossentropy',
+      metrics: ['accuracy']
+    });
+    
+    console.log('✅ 模型创建完成');
+    model.summary();
+    
+    return model;
   },
   
   // ==================== 数据收集 ====================
   
-  // 开始记录战斗
   async startBattleRecord(playerTeam) {
     const battle = {
       timestamp: Date.now(),
       result: null,
       totalTurns: 0,
       playerTeam: playerTeam.map(p => p.name),
-      dataVersion: this.MODEL_VERSION  // 记录数据版本
+      dataVersion: this.MODEL_VERSION
     };
     
     this.currentBattleId = await SmartAI_DB.battles.add(battle);
@@ -176,52 +195,161 @@ export const SmartAI = {
     console.log(`🎮 开始记录战斗 #${this.currentBattleId} (V${this.MODEL_VERSION})`);
   },
   
-  // 记录玩家行动
-  async recordPlayerAction(battleState, action) {
+  /**
+   * 记录敌人行动（用于训练敌人AI）
+   * @param {Object} battleState - 战场状态（敌人视角）
+   * @param {Object} action - 敌人的行动
+   */
+  async recordEnemyAction(battleState, action) {
     if (!this.currentBattleId) return;
     
     this.currentTurn++;
+    
+    // 计算敌人行动的即时奖励
+    const immediateReward = this.calculateEnemyReward(battleState, action);
     
     const record = {
       battleId: this.currentBattleId,
       turn: this.currentTurn,
       state: this.extractFeatures(battleState),
       action: this.encodeAction(action),
-      result: null, // 战斗结束时回填
-      dataVersion: this.MODEL_VERSION  // 记录数据版本
+      reward: immediateReward,
+      result: null,
+      dataVersion: this.MODEL_VERSION
     };
     
     await SmartAI_DB.trainingData.add(record);
   },
   
-  // 结束战斗记录
-  async endBattleRecord(victory) {
+  /**
+   * @deprecated 保留兼容，不再使用
+   */
+  async recordPlayerAction(battleState, action) {
+    // 不再记录玩家操作
+    return;
+  },
+  
+  /**
+   * 计算敌人行动的即时奖励
+   * 奖励敌人做出好的决策
+   * V6: 添加基于职业的优先级奖励
+   */
+  calculateEnemyReward(battleState, action) {
+    let reward = 0;
+    
+    // 基础奖励：存活时间
+    reward += 0.1;
+    
+    // 技能选择奖励
+    const skill = SKILL_EFFECTS[action.skillName];
+    if (skill) {
+      // 攻击低血量玩家单位
+      const target = battleState.enemies.find(e => e.name === action.targetName);
+      if (target && target.currentHp < target.maxHp * 0.3) {
+        reward += 5;  // 补刀奖励
+      }
+      
+      // 使用治疗技能且有受伤友方敌人
+      if (skill.type === 'heal') {
+        const injured = battleState.allies.some(a => a.currentHp < a.maxHp * 0.5);
+        if (injured) reward += 4;
+      }
+      
+      // 使用控制技能
+      if (skill.stun || skill.silence) {
+        reward += 3;
+      }
+      
+      // 使用群体攻击技能
+      if (skill.aoe || skill.multi) {
+        const targetCount = battleState.enemies.length;
+        if (targetCount >= 3) reward += 4;
+        else if (targetCount >= 2) reward += 2;
+      }
+      
+      // 攻击召唤师（斩首策略）
+      if (target && target.summoner) {
+        reward += 4;  // 召唤师优先级提高
+      }
+      
+      // V6: 基于职业的优先级奖励
+      if (target) {
+        // 从干员数据获取职业
+        const charData = CHARACTER_DATA[target.name];
+        const targetClass = charData ? charData.class : target.class;
+        
+        if (targetClass && CLASS_PRIORITY_REWARD[targetClass]) {
+          reward += CLASS_PRIORITY_REWARD[targetClass];
+        }
+        
+        // 特殊情况：召唤物没有职业，给予较低奖励
+        if (target.isSummon) {
+          reward += 2;  // 清理召唤物
+        }
+      }
+    }
+    
+    return reward;
+  },
+  
+  /**
+   * 结束战斗记录
+   * @param {boolean} playerVictory - 玩家是否胜利
+   *
+   * 注意：对于敌人AI训练，奖励逻辑是反转的：
+   * - 玩家胜利（撤退）= 敌人失败 → 负奖励
+   * - 玩家失败 = 敌人胜利 → 正奖励
+   */
+  async endBattleRecord(playerVictory) {
     if (!this.currentBattleId) return;
     
-    // 更新战斗结果
+    // 从敌人视角：玩家胜利=敌人失败，玩家失败=敌人胜利
+    const enemyVictory = !playerVictory;
+    
+    // 更新战斗结果（记录的是敌人的胜负）
     await SmartAI_DB.battles.update(this.currentBattleId, {
-      result: victory ? 'win' : 'lose',
+      result: enemyVictory ? 'win' : 'lose',
       totalTurns: this.currentTurn
     });
     
-    // 更新所有回合的结果权重
-    const resultWeight = victory ? 1.0 : -0.5;
-    await SmartAI_DB.trainingData
+    // 终局奖励（从敌人视角）
+    // 敌人赢了（玩家输了）= 正奖励，敌人应该学习这些操作
+    // 敌人输了（玩家赢了）= 负奖励，敌人应该避免这些操作
+    const finalReward = enemyVictory ? 100 : -50;
+    
+    // 使用衰减的终局奖励（越早的回合衰减越多）
+    const records = await SmartAI_DB.trainingData
       .where('battleId')
       .equals(this.currentBattleId)
-      .modify({ result: resultWeight });
+      .toArray();
     
-    console.log(`📝 战斗 #${this.currentBattleId} 记录完成: ${victory ? '胜利' : '失败'}`);
+    for (const record of records) {
+      const decay = Math.pow(0.99, this.currentTurn - record.turn);
+      const totalReward = record.reward + finalReward * decay;
+      await SmartAI_DB.trainingData.update(record.id, {
+        result: totalReward,
+        reward: totalReward
+      });
+    }
     
-    // 更新计数
+    const resultText = enemyVictory ? '敌人胜利(玩家失败)' : '敌人失败(玩家撤退)';
+    console.log(`📝 战斗 #${this.currentBattleId}: ${resultText} (${this.currentTurn}回合)`);
+    
+    // 更新计数和探索率
     this.battleCount++;
+    this.epsilon = Math.max(
+      this.config.EPSILON_END,
+      this.epsilon * this.config.EPSILON_DECAY
+    );
+    
+    console.log(`🎲 探索率更新: ${(this.epsilon * 100).toFixed(1)}%`);
     
     // 检查是否可以训练
     if (this.battleCount === this.config.MIN_BATTLES_TO_TRAIN) {
       console.log('🎓 数据足够，开始首次训练！');
       await this.trainModel();
-    } else if (this.battleCount > this.config.MIN_BATTLES_TO_TRAIN && this.battleCount % 5 === 0) {
-      // 每5场更新一次模型
+    } else if (this.battleCount > this.config.MIN_BATTLES_TO_TRAIN && this.battleCount % 3 === 0) {
+      // 每3场更新一次模型
       console.log('🔄 增量训练模型...');
       await this.trainModel();
     }
@@ -231,55 +359,41 @@ export const SmartAI = {
   
   // ==================== 特征提取 ====================
   
-  // 提取战场状态特征（V4: 增加buff/debuff状态信息）
   extractFeatures(battleState) {
     const features = [];
     
-    // 我方单位特征（最多4个干员 + 4个召唤物）
-    // V4: 每个单位 7基础 + 4buff状态 = 11个特征
-    // 8 * 11 = 88
+    // 我方单位特征 (8 * 11 = 88)
     const maxAllies = 8;
     const allies = [...(battleState.allies || []), ...(battleState.summons || [])];
     
     for (let i = 0; i < maxAllies; i++) {
       const unit = allies[i];
       if (unit && unit.currentHp > 0) {
-        // 基础属性 (7个)
         features.push(
-          unit.currentHp / unit.maxHp,                    // HP%
-          (unit.energy || 0) / (unit.maxEnergy || 100),   // 能量%
-          unit.atk / 500,                                  // ATK归一化
-          unit.def / 100,                                  // DEF归一化
-          unit.spd / 150,                                  // SPD归一化
-          unit.isSummon ? 1 : 0,                          // 是否召唤物
-          unit.stunDuration > 0 ? 1 : 0                   // 是否眩晕
-        );
-        
-        // V4新增: buff状态 (4个)
-        features.push(
-          (unit.buffAtk || 0) / 500,                      // 固定ATK加成
-          (unit.buffAtkPercent || 0),                     // 百分比ATK加成
-          (unit.buffDef || 0) / 100,                      // 固定DEF加成
-          (unit.skillUseCount || 0) / 10                  // 技能使用次数(二重咏唱)
+          unit.currentHp / unit.maxHp,
+          (unit.energy || 0) / (unit.maxEnergy || 100),
+          unit.atk / 500,
+          unit.def / 100,
+          unit.spd / 150,
+          unit.isSummon ? 1 : 0,
+          unit.stunDuration > 0 ? 1 : 0,
+          (unit.buffAtk || 0) / 500,
+          (unit.buffAtkPercent || 0),
+          (unit.buffDef || 0) / 100,
+          (unit.skillUseCount || 0) / 10
         );
       } else {
-        // 空位或死亡：7基础 + 4buff = 11个零
-        for (let j = 0; j < 11; j++) {
-          features.push(0);
-        }
+        for (let j = 0; j < 11; j++) features.push(0);
       }
     }
     
-    // 敌方单位特征（最多4个）
-    // V4: 每个单位 7基础 + 13词缀 + 3持续debuff = 23个特征
-    // 4 * 23 = 92
+    // 敌方单位特征 (4 * 31 = 124) - V6: 添加职业 one-hot
     const maxEnemies = 4;
     const enemies = battleState.enemies || [];
     
     for (let i = 0; i < maxEnemies; i++) {
       const unit = enemies[i];
       if (unit && unit.currentHp > 0) {
-        // 基础属性 (7个)
         features.push(
           unit.currentHp / unit.maxHp,
           unit.atk / 500,
@@ -290,27 +404,32 @@ export const SmartAI = {
           unit.stunDuration > 0 ? 1 : 0
         );
         
-        // 词缀特征 (13个，每个词缀一个布尔值)
+        // 词缀 one-hot (13个)
         const unitAffixes = unit.affixes || [];
         for (const affixName of AFFIX_LIST) {
           features.push(unitAffixes.includes(affixName) ? 1 : 0);
         }
         
-        // V4新增: 持续debuff状态 (3个，对应atk/def/spd减益)
+        // Debuff状态 (3个)
         const debuffs = unit.durationDebuffs || [];
         for (const stat of DEBUFF_STAT_LIST) {
-          const hasDebuff = debuffs.some(d => d.stat === stat);
-          features.push(hasDebuff ? 1 : 0);
+          features.push(debuffs.some(d => d.stat === stat) ? 1 : 0);
+        }
+        
+        // V6: 职业 one-hot (8个)
+        // 从干员数据获取职业（召唤物没有职业）
+        const charData = CHARACTER_DATA[unit.name];
+        const unitClass = charData ? charData.class : unit.class;
+        for (const className of CLASS_LIST) {
+          features.push(unitClass === className ? 1 : 0);
         }
       } else {
-        // 空位或死亡：7基础 + 13词缀 + 3持续debuff = 23个零
-        for (let j = 0; j < 23; j++) {
-          features.push(0);
-        }
+        // 空位填充: 7 + 13 + 3 + 8 = 31
+        for (let j = 0; j < 31; j++) features.push(0);
       }
     }
     
-    // 当前行动单位特征 (3个)
+    // 当前行动单位 (3)
     const current = battleState.currentUnit;
     if (current) {
       features.push(
@@ -322,23 +441,26 @@ export const SmartAI = {
       features.push(0, 0, 0);
     }
     
-    // 回合数归一化 (1个)
-    features.push((battleState.turn || 0) / 100);
+    // 回合数 + 层数 (2)
+    features.push(
+      (battleState.turn || 0) / 100,
+      (battleState.floor || 0) / 100
+    );
     
-    // 无尽模式层数 (1个)
-    features.push((battleState.floor || 0) / 100);
-    
-    // V3: 玩家Roguelike强化特征 (8个)
+    // 玩家强化 (8)
     const playerBuffs = battleState.playerBuffs || [];
     for (const buffKey of BUFF_LIST) {
       features.push(playerBuffs.includes(buffKey) ? 1 : 0);
     }
     
-    // V4总特征数: 88(我方) + 92(敌方) + 3(当前) + 1(回合) + 1(层数) + 8(强化) = 193
-    return features;
+    // 确保长度正确
+    while (features.length < this.config.INPUT_SIZE) {
+      features.push(0);
+    }
+    
+    return features.slice(0, this.config.INPUT_SIZE);
   },
   
-  // 编码玩家行动
   encodeAction(action) {
     return {
       skillIndex: action.skillIndex || 0,
@@ -348,136 +470,19 @@ export const SmartAI = {
     };
   },
   
-  // ==================== 神经网络模型 ====================
-  
-  // 模型版本（特征维度变化时需要更新）
-  MODEL_VERSION: 4,
-  
-  // 创建模型 (V4: 增加buff/debuff状态信息)
-  createModel() {
-    // V4特征维度: 88(我方含buff) + 92(敌方含词缀+debuff) + 3(当前) + 1(回合) + 1(层数) + 8(强化) = 193
-    const inputSize = 8 * 11 + 4 * 23 + 3 + 1 + 1 + 8;  // 193个特征
-    
-    const model = {
-      inputSize: inputSize,
-      version: this.MODEL_VERSION,
-      weights: {
-        hidden1: this.randomMatrix(inputSize, 64),
-        hidden1Bias: this.randomArray(64),
-        hidden2: this.randomMatrix(64, 32),
-        hidden2Bias: this.randomArray(32),
-        skillOutput: this.randomMatrix(32, 10),   // 最多10个技能
-        skillBias: this.randomArray(10),
-        targetOutput: this.randomMatrix(32, 8),   // 最多8个目标
-        targetBias: this.randomArray(8)
-      }
-    };
-    
-    return model;
-  },
-  
-  // 随机矩阵（Xavier初始化）
-  randomMatrix(rows, cols) {
-    const matrix = [];
-    const scale = Math.sqrt(2.0 / (rows + cols));
-    for (let i = 0; i < rows; i++) {
-      matrix[i] = [];
-      for (let j = 0; j < cols; j++) {
-        matrix[i][j] = (Math.random() - 0.5) * 2 * scale;
-      }
-    }
-    return matrix;
-  },
-  
-  // 随机数组
-  randomArray(size) {
-    return Array(size).fill(0).map(() => (Math.random() - 0.5) * 0.1);
-  },
-  
-  // ReLU激活函数
-  relu(x) {
-    return Math.max(0, x);
-  },
-  
-  // Leaky ReLU
-  leakyRelu(x) {
-    return x > 0 ? x : 0.01 * x;
-  },
-  
-  // Softmax
-  softmax(arr) {
-    const max = Math.max(...arr);
-    const exp = arr.map(x => Math.exp(x - max));
-    const sum = exp.reduce((a, b) => a + b, 0);
-    return exp.map(x => x / sum);
-  },
-  
-  // 前向传播
-  forward(features) {
-    if (!this.model) return null;
-    
-    const w = this.model.weights;
-    
-    // 确保特征长度正确
-    while (features.length < this.model.inputSize) {
-      features.push(0);
-    }
-    
-    // 隐藏层1
-    let hidden1 = [];
-    for (let j = 0; j < 64; j++) {
-      let sum = w.hidden1Bias[j];
-      for (let i = 0; i < features.length && i < w.hidden1.length; i++) {
-        sum += (features[i] || 0) * (w.hidden1[i]?.[j] || 0);
-      }
-      hidden1[j] = this.leakyRelu(sum);
-    }
-    
-    // 隐藏层2
-    let hidden2 = [];
-    for (let j = 0; j < 32; j++) {
-      let sum = w.hidden2Bias[j];
-      for (let i = 0; i < 64; i++) {
-        sum += hidden1[i] * w.hidden2[i][j];
-      }
-      hidden2[j] = this.leakyRelu(sum);
-    }
-    
-    // 技能输出
-    let skillLogits = [];
-    for (let j = 0; j < 10; j++) {
-      let sum = w.skillBias[j];
-      for (let i = 0; i < 32; i++) {
-        sum += hidden2[i] * w.skillOutput[i][j];
-      }
-      skillLogits[j] = sum;
-    }
-    
-    // 目标输出
-    let targetLogits = [];
-    for (let j = 0; j < 8; j++) {
-      let sum = w.targetBias[j];
-      for (let i = 0; i < 32; i++) {
-        sum += hidden2[i] * w.targetOutput[i][j];
-      }
-      targetLogits[j] = sum;
-    }
-    
-    return {
-      skillProbs: this.softmax(skillLogits),
-      targetProbs: this.softmax(targetLogits),
-      hidden1,
-      hidden2
-    };
-  },
-  
   // ==================== 训练 ====================
   
   async trainModel() {
-    console.log('🎓 开始训练模型...');
+    console.log('🎓 开始 TensorFlow.js 训练...');
     
-    // 获取所有训练数据
-    const data = await SmartAI_DB.trainingData.toArray();
+    // 获取训练数据
+    let data = await SmartAI_DB.trainingData.toArray();
+    
+    // Experience Replay：限制缓冲区大小
+    if (data.length > this.config.REPLAY_BUFFER_SIZE) {
+      data = data.slice(-this.config.REPLAY_BUFFER_SIZE);
+    }
+    
     if (data.length === 0) {
       console.log('❌ 没有训练数据');
       return;
@@ -485,137 +490,152 @@ export const SmartAI = {
     
     console.log(`📚 训练数据量: ${data.length} 条`);
     
-    // 创建或获取模型
+    // 创建模型（如果没有）
     if (!this.model) {
       this.model = this.createModel();
     }
     
-    // 训练循环
-    for (let epoch = 0; epoch < this.config.EPOCHS; epoch++) {
-      let totalLoss = 0;
-      let sampleCount = 0;
-      
-      // 随机打乱数据
-      const shuffled = [...data].sort(() => Math.random() - 0.5);
-      
-      for (const sample of shuffled) {
-        if (!sample.state || !sample.action) continue;
-        
-        const output = this.forward(sample.state);
-        if (!output) continue;
-        
-        // 计算损失并调整权重
-        const resultWeight = sample.result || 0;
-        const lr = this.config.LEARNING_RATE * (1 + resultWeight * 0.5);
-        
-        const targetSkill = sample.action.skillIndex || 0;
-        const targetIdx = sample.action.targetIndex || 0;
-        
-        // 模仿学习：向玩家的选择靠拢
-        if (targetSkill < 10) {
-          for (let i = 0; i < 32; i++) {
-            const error = output.skillProbs[targetSkill] - 1;
-            const gradient = error * output.hidden2[i];
-            this.model.weights.skillOutput[i][targetSkill] -= lr * gradient * this.config.IMITATE_WEIGHT;
-          }
-          this.model.weights.skillBias[targetSkill] -= lr * (output.skillProbs[targetSkill] - 1) * this.config.IMITATE_WEIGHT;
-        }
-        
-        if (targetIdx < 8) {
-          for (let i = 0; i < 32; i++) {
-            const error = output.targetProbs[targetIdx] - 1;
-            const gradient = error * output.hidden2[i];
-            this.model.weights.targetOutput[i][targetIdx] -= lr * gradient * this.config.IMITATE_WEIGHT;
-          }
-          this.model.weights.targetBias[targetIdx] -= lr * (output.targetProbs[targetIdx] - 1) * this.config.IMITATE_WEIGHT;
-        }
-        
-        // 反制学习：如果玩家输了，降低这些选择的权重
-        if (resultWeight < 0) {
-          if (targetSkill < 10) {
-            for (let i = 0; i < 32; i++) {
-              this.model.weights.skillOutput[i][targetSkill] += lr * 0.1 * this.config.COUNTER_WEIGHT;
-            }
-          }
-          if (targetIdx < 8) {
-            for (let i = 0; i < 32; i++) {
-              this.model.weights.targetOutput[i][targetIdx] += lr * 0.1 * this.config.COUNTER_WEIGHT;
-            }
-          }
-        }
-        
-        totalLoss += Math.abs(output.skillProbs[targetSkill] - 1);
-        sampleCount++;
-      }
-      
-      if (sampleCount > 0) {
-        console.log(`  Epoch ${epoch + 1}/${this.config.EPOCHS}, Loss: ${(totalLoss / sampleCount).toFixed(4)}`);
-      }
+    // 准备训练数据
+    const validData = data.filter(d => d.state && d.action && d.result !== null);
+    
+    if (validData.length < 10) {
+      console.log('❌ 有效训练数据不足');
+      return;
     }
     
-    // 保存模型
-    await this.saveModel();
-    this.isModelReady = true;
-    console.log('✅ 模型训练完成！');
+    // 构建输入和标签张量
+    const states = validData.map(d => d.state);
+    const actions = validData.map(d => {
+      // One-hot 编码：技能 + 目标
+      const label = new Array(this.config.SKILL_OUTPUT + this.config.TARGET_OUTPUT).fill(0);
+      const skillIdx = Math.min(d.action.skillIndex || 0, this.config.SKILL_OUTPUT - 1);
+      const targetIdx = Math.min(d.action.targetIndex || 0, this.config.TARGET_OUTPUT - 1);
+      label[skillIdx] = 1;
+      label[this.config.SKILL_OUTPUT + targetIdx] = 1;
+      return label;
+    });
+    const rewards = validData.map(d => d.result || 0);
+    
+    // 根据奖励调整标签权重
+    const maxReward = Math.max(...rewards.map(Math.abs), 1);
+    const weightedActions = actions.map((action, i) => {
+      const weight = 1 + (rewards[i] / maxReward) * 0.5;
+      return action.map(v => v * Math.max(0.1, weight));
+    });
+    
+    // 转换为张量
+    const xs = tf.tensor2d(states);
+    const ys = tf.tensor2d(weightedActions);
+    
+    try {
+      // 训练
+      const history = await this.model.fit(xs, ys, {
+        epochs: this.config.EPOCHS,
+        batchSize: this.config.BATCH_SIZE,
+        shuffle: true,
+        validationSplit: 0.1,
+        callbacks: {
+          onEpochEnd: async (epoch, logs) => {
+            console.log(`  Epoch ${epoch + 1}/${this.config.EPOCHS} - loss: ${logs.loss.toFixed(4)} - acc: ${(logs.acc * 100).toFixed(1)}%`);
+            
+            // 记录训练历史
+            await SmartAI_DB.trainingStats.put({
+              id: `epoch_${Date.now()}_${epoch}`,
+              epoch: epoch,
+              loss: logs.loss,
+              accuracy: logs.acc,
+              timestamp: Date.now()
+            });
+          }
+        }
+      });
+      
+      this.trainingHistory.push({
+        timestamp: Date.now(),
+        finalLoss: history.history.loss[history.history.loss.length - 1],
+        finalAccuracy: history.history.acc[history.history.acc.length - 1],
+        dataSize: validData.length
+      });
+      
+      // 保存模型
+      await this.saveModel();
+      this.isModelReady = true;
+      
+      console.log('✅ TensorFlow.js 训练完成！');
+      
+    } finally {
+      // 清理张量
+      xs.dispose();
+      ys.dispose();
+    }
   },
   
-  // 保存模型
+  // ==================== 模型保存/加载 ====================
+  
   async saveModel() {
     if (!this.model) return;
     
-    await SmartAI_DB.modelParams.put({
-      id: 'main',
-      weights: JSON.stringify(this.model.weights),
-      inputSize: this.model.inputSize,
-      version: this.MODEL_VERSION,
-      updatedAt: Date.now()
-    });
-    
-    console.log(`💾 模型已保存 (V${this.MODEL_VERSION})`);
+    try {
+      // 使用 TensorFlow.js 内置的 IndexedDB 保存
+      await this.model.save('indexeddb://smartai-model');
+      
+      // 同时保存元数据到我们的数据库
+      await SmartAI_DB.modelParams.put({
+        id: 'main',
+        version: this.MODEL_VERSION,
+        epsilon: this.epsilon,
+        battleCount: this.battleCount,
+        updatedAt: Date.now()
+      });
+      
+      console.log(`💾 模型已保存 (V${this.MODEL_VERSION})`);
+    } catch (e) {
+      console.error('❌ 模型保存失败:', e);
+    }
   },
   
-  // 加载模型
   async loadOrTrainModel() {
     const saved = await SmartAI_DB.modelParams.get('main');
     
-    if (saved && saved.weights) {
-      // 检查模型版本
-      const savedVersion = saved.version || 1;
-      if (savedVersion < this.MODEL_VERSION) {
-        console.log(`⚠️ 模型版本过旧 (V${savedVersion} → V${this.MODEL_VERSION})`);
-        console.log('🔄 特征维度已更新，需要清除旧数据并重新训练...');
-        // 清除旧数据（特征维度不兼容）
-        await this.clearAllData();
-        console.log('📢 请重新进行无尽模式战斗以收集新数据！');
-        return;
-      }
-      
-      console.log(`📦 加载已保存的模型 (V${savedVersion})...`);
+    if (saved && saved.version === this.MODEL_VERSION) {
       try {
-        this.model = {
-          inputSize: saved.inputSize || 141,
-          version: savedVersion,
-          weights: JSON.parse(saved.weights)
-        };
+        console.log('📦 加载已保存的 TensorFlow.js 模型...');
+        this.model = await tf.loadLayersModel('indexeddb://smartai-model');
+        
+        // 重新编译模型
+        this.model.compile({
+          optimizer: tf.train.adam(this.config.LEARNING_RATE),
+          loss: 'categoricalCrossentropy',
+          metrics: ['accuracy']
+        });
+        
+        // 恢复元数据
+        this.epsilon = saved.epsilon || this.config.EPSILON_END;
+        
         this.isModelReady = true;
         console.log('✅ 模型加载成功');
+        return;
       } catch (e) {
-        console.error('❌ 模型加载失败，重新训练', e);
-        await this.trainModel();
+        console.log('⚠️ 模型加载失败，重新训练:', e.message);
       }
-    } else {
-      console.log('🆕 没有已保存模型，开始训练...');
-      await this.trainModel();
     }
+    
+    console.log('🆕 开始训练新模型...');
+    await this.trainModel();
   },
   
   // ==================== AI决策 ====================
   
-  // 获取AI决策
   getDecision(battleState, availableSkills, availableTargets) {
-    // 如果模型没准备好，使用随机决策
-    if (!this.isModelReady || !this.model) {
+    // 检查模型状态
+    if (!this.model) {
       console.log('🎲 模型未就绪，使用随机决策');
+      return this.getRandomDecision(availableSkills, availableTargets);
+    }
+    
+    // ε-greedy 探索
+    if (Math.random() < this.epsilon) {
+      console.log(`🎲 探索模式 (ε=${(this.epsilon * 100).toFixed(1)}%)`);
       return this.getRandomDecision(availableSkills, availableTargets);
     }
     
@@ -623,44 +643,43 @@ export const SmartAI = {
     const features = this.extractFeatures(battleState);
     
     // 前向传播
-    const output = this.forward(features);
-    if (!output) {
-      return this.getRandomDecision(availableSkills, availableTargets);
-    }
+    const input = tf.tensor2d([features]);
+    const output = this.model.predict(input);
+    const predictions = output.dataSync();
     
-    // 根据概率选择技能（只在可用技能中选择）
+    // 清理张量
+    input.dispose();
+    output.dispose();
+    
+    // 分离技能和目标概率
+    const skillLogits = predictions.slice(0, this.config.SKILL_OUTPUT);
+    const targetLogits = predictions.slice(this.config.SKILL_OUTPUT);
+    
+    // Softmax
+    const skillProbs = this.softmax(Array.from(skillLogits));
+    const targetProbs = this.softmax(Array.from(targetLogits));
+    
+    // 在可用选项中选择最佳
     let bestSkillIdx = 0;
     let bestSkillProb = -1;
-    for (let i = 0; i < availableSkills.length; i++) {
-      const prob = output.skillProbs[i] || 0;
-      if (prob > bestSkillProb) {
-        bestSkillProb = prob;
+    for (let i = 0; i < availableSkills.length && i < skillProbs.length; i++) {
+      if (skillProbs[i] > bestSkillProb) {
+        bestSkillProb = skillProbs[i];
         bestSkillIdx = i;
       }
     }
     
-    // 根据概率选择目标（只在可用目标中选择）
     let bestTargetIdx = 0;
     let bestTargetProb = -1;
-    for (let i = 0; i < availableTargets.length; i++) {
-      const prob = output.targetProbs[i] || 0;
-      if (prob > bestTargetProb) {
-        bestTargetProb = prob;
+    for (let i = 0; i < availableTargets.length && i < targetProbs.length; i++) {
+      if (targetProbs[i] > bestTargetProb) {
+        bestTargetProb = targetProbs[i];
         bestTargetIdx = i;
       }
     }
     
-    // 添加探索性（10%随机）
-    if (Math.random() < 0.1) {
-      bestSkillIdx = Math.floor(Math.random() * availableSkills.length);
-    }
-    if (Math.random() < 0.1) {
-      bestTargetIdx = Math.floor(Math.random() * availableTargets.length);
-    }
-    
     const skill = availableSkills[bestSkillIdx] || availableSkills[0];
     const target = availableTargets[bestTargetIdx] || availableTargets[0];
-    
     const skillName = typeof skill === 'string' ? skill : skill.name;
     const confidence = (bestSkillProb * bestTargetProb * 100).toFixed(1);
     
@@ -669,25 +688,32 @@ export const SmartAI = {
     return {
       skill: { name: skillName, ...SKILL_EFFECTS[skillName] },
       target: target,
-      strategy: '🧠深度学习',
+      strategy: '🧠TensorFlow.js',
       confidence: confidence + '%'
     };
   },
   
-  // 随机决策（后备方案）
+  // Softmax 函数
+  softmax(arr) {
+    const max = Math.max(...arr);
+    const exp = arr.map(x => Math.exp(x - max));
+    const sum = exp.reduce((a, b) => a + b, 0);
+    return exp.map(x => x / sum);
+  },
+  
+  // 随机决策
   getRandomDecision(availableSkills, availableTargets) {
     const skillIdx = Math.floor(Math.random() * availableSkills.length);
     const targetIdx = Math.floor(Math.random() * availableTargets.length);
     
     const skill = availableSkills[skillIdx] || availableSkills[0];
     const target = availableTargets[targetIdx] || availableTargets[0];
-    
     const skillName = typeof skill === 'string' ? skill : skill.name;
     
     return {
       skill: { name: skillName, ...SKILL_EFFECTS[skillName] },
       target: target,
-      strategy: '🎲随机',
+      strategy: '🎲随机探索',
       confidence: '0%'
     };
   },
@@ -700,6 +726,9 @@ export const SmartAI = {
     const losses = battles.filter(b => b.result === 'lose').length;
     const dataCount = await SmartAI_DB.trainingData.count();
     
+    // 获取最近训练历史
+    const recentTraining = this.trainingHistory.slice(-5);
+    
     return {
       totalBattles: battles.length,
       wins,
@@ -708,7 +737,11 @@ export const SmartAI = {
       trainingDataCount: dataCount,
       isModelReady: this.isModelReady,
       needMoreData: battles.length < this.config.MIN_BATTLES_TO_TRAIN,
-      battlesNeeded: Math.max(0, this.config.MIN_BATTLES_TO_TRAIN - battles.length)
+      battlesNeeded: Math.max(0, this.config.MIN_BATTLES_TO_TRAIN - battles.length),
+      epsilon: this.epsilon,
+      recentTraining: recentTraining,
+      modelVersion: this.MODEL_VERSION,
+      backend: typeof tf !== 'undefined' ? tf.getBackend() : 'N/A'
     };
   },
   
@@ -717,9 +750,21 @@ export const SmartAI = {
     await SmartAI_DB.battles.clear();
     await SmartAI_DB.trainingData.clear();
     await SmartAI_DB.modelParams.clear();
+    await SmartAI_DB.trainingStats.clear();
+    
+    // 删除 TensorFlow.js 保存的模型
+    try {
+      await tf.io.removeModel('indexeddb://smartai-model');
+    } catch (e) {
+      // 模型可能不存在
+    }
+    
     this.model = null;
     this.isModelReady = false;
     this.battleCount = 0;
+    this.epsilon = this.config.EPSILON_START;
+    this.trainingHistory = [];
+    
     console.log('🗑️ 所有AI数据已清除');
   },
   
@@ -727,9 +772,15 @@ export const SmartAI = {
   async exportData() {
     const battles = await SmartAI_DB.battles.toArray();
     const trainingData = await SmartAI_DB.trainingData.toArray();
-    return { battles, trainingData, model: this.model };
+    const stats = await SmartAI_DB.trainingStats.toArray();
+    
+    return {
+      battles,
+      trainingData,
+      trainingStats: stats,
+      model: this.model ? 'loaded' : null,
+      config: this.config,
+      epsilon: this.epsilon
+    };
   }
 };
-
-// ==================== 页面加载时初始化 ====================
-// 已移除自动初始化，由 main.js 控制

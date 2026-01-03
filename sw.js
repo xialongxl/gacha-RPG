@@ -1,7 +1,7 @@
 // Service Worker - 动态缓存版本
 // Network First 策略，自动缓存所有访问的资源
 
-const CACHE_NAME = 'arknights-pwa-v1';
+const CACHE_NAME = 'arknights-pwa-v2';
 
 // 安装事件
 self.addEventListener('install', (event) => {

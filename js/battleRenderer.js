@@ -609,12 +609,13 @@ export const BattleRenderer = {
       btn.className = `skill-btn ${canUse ? '' : 'disabled'} ${isLeaderBoosted ? 'leader-boosted' : ''}`;
       
       let tooltip = `【${skillName}】\n`;
-      tooltip += `消耗: ${actualCost} 能量 | 获得: ${skill.gain} 能量\n`;
-      tooltip += `目标: ${skill.target === 'single' ? '单体敌人' : skill.target === 'all' ? '全体敌人' : skill.target === 'ally' ? '单体队友' : skill.target === 'self' ? '自身' : '全体'}`;
-      if (skill.damage) tooltip += `\n伤害: ${skill.damage}% ATK`;
-      if (skill.heal) tooltip += `\n治疗: ${skill.heal}% HP`;
-      if (skill.stun) tooltip += `\n眩晕: ${skill.stun}回合`;
-      if (skill.buff) tooltip += `\n增益: ATK+${skill.buff}%`;
+      //tooltip += `消耗: ${actualCost} 能量 | 获得: ${skill.gain} 能量\n`;
+      //tooltip += `目标: ${skill.target === 'single' ? '单体敌人' : skill.target === 'all' ? '全体敌人' : skill.target === 'ally' ? '单体队友' : skill.target === 'self' ? '自身' : '全体'}`;
+      //if (skill.damage) tooltip += `\n伤害: ${skill.damage}% ATK`;
+      //if (skill.heal) tooltip += `\n治疗: ${skill.heal}% HP`;
+      //if (skill.stun) tooltip += `\n眩晕: ${skill.stun}回合`;
+      //if (skill.buff) tooltip += `\n增益: ATK+${skill.buff}%`;
+      tooltip += `\n${skill.desc}`;
       btn.title = tooltip;
       
       if (unit.isSummon) {

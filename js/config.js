@@ -22,6 +22,16 @@ export const CONFIG = {
   // 潜能加成（每级+5%）
   POTENTIAL_BONUS_PER_LEVEL: 0.05,
 
+  // ==================== 突破系统配置 ====================
+  BREAKTHROUGH: {
+    REQUIRED_RARITY: 6,           // 需要6星
+    REQUIRED_POTENTIAL: 13,       // 需要满潜能
+    GOLD_COST: 10000,             // 突破消耗10000金币
+    STATS_EXTRA_BONUS: 0.4,       // 属性突破：在潜能加成基础上额外+40%，总计+100%（从+60%补至+100%）
+    SPEED_BONUS: 0.4,             // 速度突破：+40%速度
+    EXTRA_STARS: 1                // 额外显示1颗星
+  },
+
   // ==================== 召唤系统配置 ====================
   SUMMON: {
     MAX_SLOTS: 4,              // 召唤位总数（全队共享）
@@ -252,4 +262,40 @@ export function applyPotentialBonus(baseValue, potential) {
 // 获取潜能加成百分比
 export function getPotentialBonusPercent(potential) {
   return (potential - 1) * CONFIG.POTENTIAL_BONUS_PER_LEVEL * 100;
+}
+
+// ==================== 突破系统函数 ====================
+
+/**
+ * 获取干员显示星级
+ * @param {number} rarity - 原始星级
+ * @param {string|null} breakthrough - 突破类型
+ * @returns {number} 显示星级
+ */
+export function getDisplayRarity(rarity, breakthrough) {
+  if (breakthrough) {
+    return rarity + CONFIG.BREAKTHROUGH.EXTRA_STARS;
+  }
+  return rarity;
+}
+
+/**
+ * 检查是否可以突破
+ * @param {number} rarity - 星级
+ * @param {number} potential - 潜能等级
+ * @param {string|null} breakthrough - 当前突破状态
+ * @returns {boolean} 是否可以突破
+ */
+export function canBreakthrough(rarity, potential, breakthrough) {
+  return rarity >= CONFIG.BREAKTHROUGH.REQUIRED_RARITY &&
+         potential >= CONFIG.BREAKTHROUGH.REQUIRED_POTENTIAL &&
+         !breakthrough;
+}
+
+/**
+ * 获取突破所需金币
+ * @returns {number} 金币数量
+ */
+export function getBreakthroughCost() {
+  return CONFIG.BREAKTHROUGH.GOLD_COST;
 }

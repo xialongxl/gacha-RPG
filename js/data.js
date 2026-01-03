@@ -29,241 +29,264 @@ export function processCharacterData(data) {
 
 export const CHARACTER_DATA_RAW = {
   // ========== 6星 ==========
-  '阿米娅': { 
+  '阿米娅': {
     id: 'char_002_amiya',
-    rarity: 6, 
-    hp: 800, 
-    atk: 150, 
-    def: 60, 
-    spd: 90, 
+    rarity: 6,
+    class: '术师',  // 职业
+    hp: 800,
+    atk: 150,
+    def: 60,
+    spd: 90,
     skills: ['普攻', '奥义·终结', '治疗'],
     voiceText: ''
   },
-  '陈': { 
+  '陈': {
     id: 'char_010_chen',
-    rarity: 6, 
-    hp: 900, 
-    atk: 180, 
-    def: 70, 
-    spd: 100, 
+    rarity: 6,
+    class: '近卫',  // 职业
+    hp: 900,
+    atk: 180,
+    def: 70,
+    spd: 100,
     skills: ['普攻', '赤霄·拔刀', '剑雨'],
     voiceText: ''
   },
-  '银灰': { 
+  '银灰': {
     id: 'char_017_huang',
-    rarity: 6, 
-    hp: 850, 
-    atk: 200, 
-    def: 50, 
-    spd: 85, 
+    rarity: 6,
+    class: '近卫',  // 职业
+    hp: 850,
+    atk: 200,
+    def: 50,
+    spd: 85,
     skills: ['普攻', '真银斩', '强化'],
     voiceText: ''
   },
-  '艾雅法拉': { 
+  '艾雅法拉': {
     id: 'char_180_amgoat',
-    rarity: 6, 
-    hp: 600, 
-    atk: 220, 
-    def: 40, 
-    spd: 80, 
+    rarity: 6,
+    class: '术师',  // 职业
+    hp: 600,
+    atk: 220,
+    def: 40,
+    spd: 80,
     skills: ['普攻', '二重咏唱', '点燃', '火山'],
-    voiceText: ''
+    voiceText: '我是艾雅法拉，加入罗德岛前一直在研究火山地质。因为矿石病的影响，我的听力不太好，也许，以后要多多麻烦您了，前辈~'
   },
-  '凯尔希': { 
+  '凯尔希': {
     id: 'char_003_kalts',
-    rarity: 6, 
-    hp: 750, 
-    atk: 160, 
-    def: 65, 
-    spd: 88, 
+    rarity: 6,
+    class: '医疗',  // 职业
+    hp: 750,
+    atk: 160,
+    def: 65,
+    spd: 88,
     skills: ['普攻', 'Mon3tr', '治疗'],
     voiceText: ''
   },
-  '铃兰': { 
+  '铃兰': {
     id: 'char_358_lisa',
-    rarity: 6, 
-    hp: 700, 
-    atk: 160, 
-    def: 55, 
-    spd: 85, 
+    rarity: 6,
+    class: '辅助',  // 职业
+    hp: 700,
+    atk: 160,
+    def: 55,
+    spd: 85,
     skills: ['普攻', '全力以赴', '儿时的舞乐', '狐火渺然'],
     voiceText: '罗德岛干员丽萨……啊不对，是铃兰，干员铃兰！是我自己挑的代号喔，今天开始正式作为干员行动，请多指教！'
   },
-    '缪尔赛思': { 
+  '缪尔赛思': {
     id: 'char_249_mlyss',
-    rarity: 6, 
-    hp: 800, 
-    atk: 150, 
-    def: 40, 
-    spd: 95, 
-    summoner: true,
+    rarity: 6,
+    class: '先锋',  // 职业（召唤型先锋）
+    hp: 800,
+    atk: 150,
+    def: 40,
+    spd: 95,
+    summoner: true,  // 召唤流形
     skills: ['普攻', '渐进性润化', '生态耦合', '浅层非熵适应'],
     voiceText: '莱茵生命，生态科主任，缪尔赛思。不过我们之间应该不需要这么正式的问候吧，博士。毕竟，我们早就是朋友了。'
   },
-    '夜莺': { 
+  '夜莺': {
     id: 'char_179_cgbird',
-    rarity: 6, 
-    hp: 750, 
-    atk: 180, 
-    def: 40, 
-    spd: 80, 
+    rarity: 6,
+    class: '医疗',  // 职业
+    hp: 750,
+    atk: 180,
+    def: 40,
+    spd: 80,
     healer: true,  // 医疗干员：普攻改为治疗
-    skills: ['医疗普攻', '治疗强化·γ型', '法术护盾', '圣域'],
+    skills: ['疗愈', '治疗强化·γ型', '法术护盾', '圣域'],
     voiceText: '丽兹，这是我真正的名字。除此之外的事情，我都不记得了......'
   },
 
   // ========== 5星 ==========
-  '德克萨斯': { 
+  '德克萨斯': {
     id: 'char_102_texas',
-    rarity: 5, 
-    hp: 650, 
-    atk: 130, 
-    def: 55, 
-    spd: 95, 
+    rarity: 5,
+    class: '先锋',  // 职业
+    hp: 650,
+    atk: 130,
+    def: 55,
+    spd: 95,
     skills: ['普攻', '剑雨', '眩晕'],
     voiceText: ''
   },
-  '蓝毒': { 
+  '蓝毒': {
     id: 'char_129_bluep',
-    rarity: 5, 
-    hp: 550, 
-    atk: 140, 
-    def: 45, 
-    spd: 92, 
+    rarity: 5,
+    class: '狙击',  // 职业
+    hp: 550,
+    atk: 140,
+    def: 45,
+    spd: 92,
     skills: ['普攻', '毒刺', '连射'],
     voiceText: ''
   },
-  '白面鸮': { 
+  '白面鸮': {
     id: 'char_128_plosis',
-    rarity: 5, 
-    hp: 600, 
-    atk: 100, 
-    def: 50, 
-    spd: 85, 
+    rarity: 5,
+    class: '医疗',  // 职业
+    hp: 600,
+    atk: 100,
+    def: 50,
+    spd: 85,
     skills: ['普攻', '治疗', '群疗'],
     voiceText: ''
   },
-  '红': { 
+  '红': {
     id: 'char_140_hpred',
-    rarity: 5, 
-    hp: 500, 
-    atk: 160, 
-    def: 35, 
-    spd: 110, 
+    rarity: 5,
+    class: '特种',  // 职业（快速再部署）
+    hp: 500,
+    atk: 160,
+    def: 35,
+    spd: 110,
     skills: ['普攻', '处决', '潜行'],
     voiceText: ''
   },
-  '崖心': { 
+  '崖心': {
     id: 'char_143_ghost',
-    rarity: 5, 
-    hp: 700, 
-    atk: 120, 
-    def: 60, 
-    spd: 80, 
+    rarity: 5,
+    class: '特种',  // 职业（钩索）
+    hp: 700,
+    atk: 120,
+    def: 60,
+    spd: 80,
     skills: ['普攻', '钩索', '投掷'],
     voiceText: ''
   },
 
   // ========== 4星 ==========
-  '芬': { 
+  '芬': {
     id: 'char_123_fang',
-    rarity: 4, 
-    hp: 500, 
-    atk: 80, 
-    def: 40, 
-    spd: 75, 
+    rarity: 4,
+    class: '先锋',  // 职业
+    hp: 500,
+    atk: 80,
+    def: 40,
+    spd: 75,
     skills: ['普攻', '战吼'],
     voiceText: ''
   },
-  '香草': { 
+  '香草': {
     id: 'char_121_lava',
-    rarity: 4, 
-    hp: 450, 
-    atk: 60, 
-    def: 35, 
-    spd: 70, 
+    rarity: 4,
+    class: '先锋',  // 职业（回费先锋）
+    hp: 450,
+    atk: 60,
+    def: 35,
+    spd: 70,
     skills: ['普攻', '治疗'],
     voiceText: ''
   },
-  '翎羽': { 
+  '翎羽': {
     id: 'char_192_falco',
-    rarity: 4, 
-    hp: 480, 
-    atk: 90, 
-    def: 38, 
-    spd: 78, 
+    rarity: 4,
+    class: '先锋',  // 职业
+    hp: 480,
+    atk: 90,
+    def: 38,
+    spd: 78,
     skills: ['普攻', '突刺'],
     voiceText: ''
   },
-  '玫兰莎': { 
+  '玫兰莎': {
     id: 'char_208_melan',
-    rarity: 4, 
-    hp: 520, 
-    atk: 100, 
-    def: 42, 
-    spd: 82, 
+    rarity: 4,
+    class: '近卫',  // 职业
+    hp: 520,
+    atk: 100,
+    def: 42,
+    spd: 82,
     skills: ['普攻', '连斩'],
     voiceText: ''
   },
-  '安塞尔': { 
+  '安塞尔': {
     id: 'char_212_ansel',
-    rarity: 4, 
-    hp: 400, 
-    atk: 55, 
-    def: 30, 
-    spd: 72, 
+    rarity: 4,
+    class: '医疗',  // 职业
+    hp: 400,
+    atk: 55,
+    def: 30,
+    spd: 72,
     skills: ['普攻', '治疗'],
     voiceText: ''
   },
 
   // ========== 3星 ==========
-  '巡林者': { 
+  '巡林者': {
     id: 'char_122_ranger',
-    rarity: 3, 
-    hp: 350, 
-    atk: 70, 
-    def: 25, 
-    spd: 70, 
+    rarity: 3,
+    class: '狙击',  // 职业
+    hp: 350,
+    atk: 70,
+    def: 25,
+    spd: 70,
     skills: ['普攻'],
     voiceText: ''
   },
-  '杜林': { 
+  '杜林': {
     id: 'char_285_medic2',
-    rarity: 3, 
-    hp: 300, 
-    atk: 50, 
-    def: 20, 
-    spd: 65, 
+    rarity: 3,
+    class: '医疗',  // 职业
+    hp: 300,
+    atk: 50,
+    def: 20,
+    spd: 65,
     skills: ['普攻'],
     voiceText: ''
   },
-  '夜刀': { 
+  '夜刀': {
     id: 'char_502_nblade',
-    rarity: 3, 
-    hp: 380, 
-    atk: 65, 
-    def: 28, 
-    spd: 68, 
+    rarity: 3,
+    class: '近卫',  // 职业
+    hp: 380,
+    atk: 65,
+    def: 28,
+    spd: 68,
     skills: ['普攻'],
     voiceText: ''
   },
-  '黑角': { 
+  '黑角': {
     id: 'char_503_hphn',
-    rarity: 3, 
-    hp: 400, 
-    atk: 60, 
-    def: 35, 
-    spd: 60, 
+    rarity: 3,
+    class: '重装',  // 职业
+    hp: 400,
+    atk: 60,
+    def: 35,
+    spd: 60,
     skills: ['普攻'],
     voiceText: ''
   },
-  '12F': { 
+  '12F': {
     id: 'char_500_12fce',
-    rarity: 3, 
-    hp: 320, 
-    atk: 55, 
-    def: 22, 
-    spd: 62, 
+    rarity: 3,
+    class: '术师',  // 职业
+    hp: 320,
+    atk: 55,
+    def: 22,
+    spd: 62,
     skills: ['普攻'],
     voiceText: ''
   }

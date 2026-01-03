@@ -27,91 +27,122 @@ export const SmartAI_Battle = {
   // ==================== 数据记录（仅无尽模式） ====================
   
   /**
-   * 记录玩家技能使用
-   * 在玩家选择技能后调用，用于收集训练数据
-   * 
-   * @param {Object} user - 使用技能的单位
-   * @param {string} skillName - 技能名称
-   * @param {Object} target - 目标单位（可为null）
+   * 记录敌人技能使用（用于训练敌人AI）
+   * 在敌人行动后调用，用于收集训练数据
+   *
+   * @param {Object} enemy - 使用技能的敌人
+   * @param {Object} decision - 敌人的决策 { skill, target, strategy }
+   * @param {Array} aliveAllies - 存活的玩家单位
+   * @param {Array} aliveEnemies - 存活的敌人单位
    */
-  async recordPlayerSkill(user, skillName, target) {
+  async recordEnemyAction(enemy, decision, aliveAllies, aliveEnemies) {
     // 只在无尽模式记录
     if (!battle.isEndless) return;
     if (!this.learningEnabled) return;
     if (typeof SmartAI === 'undefined') return;
     
-    // 构建当前战场状态
-    const battleState = this.getBattleState(user);
+    // 构建当前战场状态（从敌人视角）
+    const battleState = this.getEnemyBattleState(enemy, aliveAllies, aliveEnemies);
     
-    // 编码玩家行动
+    // 编码敌人行动
     const action = {
-      skillIndex: this.getSkillIndex(user, skillName),
-      targetIndex: this.getTargetIndex(target),
-      skillName: skillName,
-      targetName: target ? target.name : ''
+      skillIndex: this.getEnemySkillIndex(enemy, decision.skill.name),
+      targetIndex: this.getEnemyTargetIndex(decision.target, aliveAllies),
+      skillName: decision.skill.name,
+      targetName: decision.target ? decision.target.name : ''
     };
     
     // 记录到SmartAI数据库
-    await SmartAI.recordPlayerAction(battleState, action);
+    await SmartAI.recordEnemyAction(battleState, action);
   },
   
   /**
-   * 获取当前战场状态
-   * 用于特征提取
-   * 
-   * @param {Object} currentUnit - 当前行动单位
-   * @returns {Object} 战场状态对象
+   * 记录玩家技能使用（保留但不再用于训练）
+   * @deprecated 改用 recordEnemyAction
    */
-  getBattleState(currentUnit) {
-    // 获取玩家Roguelike强化列表
+  async recordPlayerSkill(user, skillName, target) {
+    // 不再使用，保留函数签名避免报错
+    return;
+  },
+  
+  /**
+   * 获取敌人视角的战场状态
+   * 用于特征提取（敌人AI训练）
+   *
+   * @param {Object} enemy - 当前行动的敌人
+   * @param {Array} aliveAllies - 存活的玩家单位
+   * @param {Array} aliveEnemies - 存活的敌人单位
+   * @returns {Object} 战场状态对象（敌人视角）
+   */
+  getEnemyBattleState(enemy, aliveAllies, aliveEnemies) {
+    // 获取玩家Roguelike强化列表（敌人需要知道玩家有什么buff来反制）
     let playerBuffs = [];
     if (typeof EndlessMode !== 'undefined' && EndlessMode.currentBuffs) {
       playerBuffs = EndlessMode.currentBuffs.map(b => b.key);
     }
     
+    // 从敌人视角：
+    // - allies = 其他敌人（敌人的友方）
+    // - enemies = 玩家单位（敌人的敌方）
     return {
-      allies: battle.allies || [],           // 我方干员
-      summons: battle.summons || [],         // 我方召唤物
-      enemies: battle.enemies || [],         // 敌方单位
-      currentUnit: currentUnit,              // 当前行动单位
+      allies: aliveEnemies || [],            // 敌人视角：其他敌人是友方
+      summons: [],                           // 敌人没有召唤物
+      enemies: aliveAllies || [],            // 敌人视角：玩家单位是敌方
+      currentUnit: enemy,                    // 当前行动的敌人
       turn: battle.currentTurn || 0,         // 当前回合数
       floor: battle.endlessFloor || 0,       // 无尽模式层数
-      playerBuffs: playerBuffs               // 玩家Roguelike强化
+      playerBuffs: playerBuffs               // 玩家的强化（敌人需要知道）
     };
   },
   
   /**
-   * 获取技能在用户技能列表中的索引
-   * 用于编码玩家选择的技能
-   * 
-   * @param {Object} user - 使用技能的单位
+   * 获取当前战场状态（保留用于兼容）
+   * @deprecated 改用 getEnemyBattleState
+   */
+  getBattleState(currentUnit) {
+    return this.getEnemyBattleState(currentUnit, battle.allies, battle.enemies);
+  },
+  
+  /**
+   * 获取敌人技能在其技能列表中的索引
+   *
+   * @param {Object} enemy - 敌人单位
    * @param {string} skillName - 技能名称
    * @returns {number} 技能索引（从0开始）
    */
-  getSkillIndex(user, skillName) {
-    if (!user || !user.skills) return 0;
-    const index = user.skills.indexOf(skillName);
+  getEnemySkillIndex(enemy, skillName) {
+    if (!enemy || !enemy.skills) return 0;
+    const index = enemy.skills.indexOf(skillName);
     return index >= 0 ? index : 0;
   },
   
   /**
-   * 获取目标在可用目标列表中的索引
-   * 用于编码玩家选择的目标
-   * 
+   * 获取目标在玩家单位列表中的索引（敌人视角）
+   *
    * @param {Object} target - 目标单位
+   * @param {Array} aliveAllies - 存活的玩家单位（敌人的攻击目标）
    * @returns {number} 目标索引（从0开始）
+   */
+  getEnemyTargetIndex(target, aliveAllies) {
+    if (!target) return 0;
+    
+    // 敌人攻击的目标是玩家单位
+    const index = aliveAllies.findIndex(a => a.id === target.id || a.unitId === target.unitId);
+    return index >= 0 ? index : 0;
+  },
+  
+  /**
+   * @deprecated 保留用于兼容
+   */
+  getSkillIndex(user, skillName) {
+    return this.getEnemySkillIndex(user, skillName);
+  },
+  
+  /**
+   * @deprecated 保留用于兼容
    */
   getTargetIndex(target) {
     if (!target) return 0;
-    
-    // 如果是敌人目标
-    if (target.isEnemy) {
-      const enemies = battle.enemies.filter(e => e.currentHp > 0);
-      const index = enemies.findIndex(e => e.id === target.id || e.unitId === target.unitId);
-      return index >= 0 ? index : 0;
-    }
-    
-    // 如果是友方目标（治疗等）
     const allies = [...battle.allies, ...battle.summons].filter(a => a.currentHp > 0);
     const index = allies.findIndex(a => a.id === target.id || a.unitId === target.unitId);
     return index >= 0 ? index : 0;

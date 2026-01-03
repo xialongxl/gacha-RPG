@@ -236,10 +236,68 @@ class GameStore {
     this.save();
   }
 
+  // --- 突破系统 ---
+
+  /**
+   * 设置干员突破状态
+   * @param {string} name - 干员名称
+   * @param {string} type - 突破类型 ('stats' | 'speed')
+   */
+  setBreakthrough(name, type) {
+    if (state.inventory[name]) {
+      state.inventory[name].breakthrough = type;
+      this.save();
+    }
+  }
+
+  /**
+   * 获取干员突破状态
+   * @param {string} name - 干员名称
+   * @returns {string|null} 突破类型
+   */
+  getBreakthrough(name) {
+    return state.inventory[name]?.breakthrough || null;
+  }
+
   // --- 辅助 ---
   
+  /**
+   * 保存当前状态到自动存档槽位
+   * 使用防抖机制，避免频繁保存
+   * 注意：始终保存到 'auto' 槽位，手动存档是独立的快照
+   */
   save() {
-    saveState();
+    // 清除之前的防抖定时器
+    if (this._saveTimer) {
+      clearTimeout(this._saveTimer);
+    }
+    
+    // 设置防抖：100ms内的多次save只执行最后一次
+    // 始终保存到 'auto' 槽位
+    this._saveTimer = setTimeout(() => {
+      saveState('auto', '自动存档').then((success) => {
+        if (!success) {
+          console.error('❌ 自动保存返回失败');
+        }
+      }).catch(err => {
+        console.error('❌ 自动保存异常:', err);
+      });
+    }, 100);
+  }
+  
+  /**
+   * 立即保存（不使用防抖）
+   * 用于重要操作后确保数据保存
+   */
+  async saveNow() {
+    if (this._saveTimer) {
+      clearTimeout(this._saveTimer);
+      this._saveTimer = null;
+    }
+    const targetSlot = currentSaveSlot || 'auto';
+    const success = await saveState(targetSlot);
+    console.log(`💾 立即保存${success ? '成功' : '失败'}: ${targetSlot}`);
+    return success;
   }
 }
 
@@ -250,6 +308,7 @@ export const store = new GameStore();
 /**
  * 初始化存档系统
  * 页面加载时调用，检查并迁移旧数据
+ * 自动加载时间最新的存档（而不是固定的'auto'槽位）
  */
 export async function initSaveSystem() {
   console.log('💾 初始化存档系统...');
@@ -258,14 +317,36 @@ export async function initSaveSystem() {
     // 检查是否有旧的 localStorage 数据需要迁移
     await migrateFromLocalStorage();
     
-    // 加载自动存档
-    await loadState();
+    // 获取所有存档，找到时间最新的
+    const saves = await getSaveList();
     
-    console.log('✅ 存档系统初始化完成');
+    if (saves.length > 0) {
+      // saves已经按时间戳降序排列，第一个就是最新的
+      const latestSave = saves[0];
+      console.log(`📂 找到 ${saves.length} 个存档，加载最新存档: ${latestSave.name} (ID: ${latestSave.id})`);
+      const success = await loadState(latestSave.id);
+      if (success) {
+        console.log(`📂 当前存档槽位已设置为: ${currentSaveSlot}`);
+      } else {
+        console.warn('⚠️ 加载存档失败，使用默认状态');
+        currentSaveSlot = 'auto';
+      }
+    } else {
+      // 没有存档，使用默认状态并创建自动存档
+      console.log('📂 没有找到存档，创建初始存档');
+      Object.keys(state).forEach(key => delete state[key]);
+      Object.assign(state, { ...DEFAULT_STATE });
+      currentSaveSlot = 'auto';
+      await saveState('auto', '自动存档');
+    }
+    
+    console.log(`✅ 存档系统初始化完成，当前槽位: ${currentSaveSlot}`);
   } catch (error) {
     console.error('❌ 存档系统初始化失败:', error);
     // 使用默认状态
-    state = { ...DEFAULT_STATE };
+    Object.keys(state).forEach(key => delete state[key]);
+    Object.assign(state, { ...DEFAULT_STATE });
+    currentSaveSlot = 'auto';
   }
 }
 
@@ -322,46 +403,85 @@ async function migrateFromLocalStorage() {
 
 /**
  * 读取存档
- * 
+ *
  * @param {string} slotId - 存档槽位ID，默认 'auto'
+ * @returns {boolean} 是否加载成功
  */
 export async function loadState(slotId = 'auto') {
+  console.log(`📂 loadState 开始加载: ${slotId}`);
+  
   try {
     const save = await GameDB.saves.get(slotId);
     
     if (save && save.data) {
-      state = { ...DEFAULT_STATE, ...save.data };
+      // 使用 Object.assign 保持 state 对象引用不变
+      // 先清空所有属性，再赋值新数据
+      Object.keys(state).forEach(key => delete state[key]);
+      Object.assign(state, { ...DEFAULT_STATE, ...save.data });
+      
+      // 更新当前存档槽位（重要！）
       currentSaveSlot = slotId;
       
       // 数据迁移：确保所有干员都有 potential 字段
-      Object.keys(state.inventory).forEach(name => {
-        if (!state.inventory[name].potential) {
-          state.inventory[name].potential = 1;
-        }
-      });
+      if (state.inventory) {
+        Object.keys(state.inventory).forEach(name => {
+          if (!state.inventory[name].potential) {
+            state.inventory[name].potential = 1;
+          }
+        });
+      }
       
       console.log(`📂 已加载存档: ${save.name || slotId}`);
+      console.log(`📂 当前槽位设置为: ${currentSaveSlot}`);
+      console.log(`📂 存档数据: 金币=${state.gold}, 抽卡券=${state.tickets}, 干员数=${Object.keys(state.inventory || {}).length}`);
+      return true;
     } else {
-      console.log('📂 没有找到存档，使用默认状态');
-      state = { ...DEFAULT_STATE };
+      console.warn(`⚠️ 存档 ${slotId} 不存在或数据为空`);
+      // 使用 Object.assign 保持 state 对象引用不变
+      Object.keys(state).forEach(key => delete state[key]);
+      Object.assign(state, { ...DEFAULT_STATE });
+      currentSaveSlot = slotId;
+      return false;
     }
   } catch (error) {
     console.error('❌ 读取存档失败:', error);
-    state = { ...DEFAULT_STATE };
+    // 使用 Object.assign 保持 state 对象引用不变
+    Object.keys(state).forEach(key => delete state[key]);
+    Object.assign(state, { ...DEFAULT_STATE });
+    currentSaveSlot = 'auto';
+    return false;
   }
 }
 
 /**
+ * 获取当前存档槽位ID
+ * @returns {string} 当前存档槽位ID
+ */
+export function getCurrentSaveSlot() {
+  return currentSaveSlot;
+}
+
+/**
  * 保存存档
- * 
+ *
  * @param {string} slotId - 存档槽位ID，默认使用当前槽位
  * @param {string} name - 存档名称（可选）
+ * @returns {boolean} 是否保存成功
  */
 export async function saveState(slotId = currentSaveSlot, name = null) {
   try {
+    // 确保 slotId 有效
+    if (!slotId) {
+      console.warn('⚠️ saveState: slotId 无效，使用 auto');
+      slotId = 'auto';
+    }
+    
+    // 获取旧存档以保留原有名称
+    const oldSave = await GameDB.saves.get(slotId);
+    
     const saveData = {
       id: slotId,
-      name: name || (slotId === 'auto' ? '自动存档' : `存档 ${slotId}`),
+      name: name || oldSave?.name || (slotId === 'auto' ? '自动存档' : `存档 ${slotId}`),
       timestamp: Date.now(),
       data: { ...state }
     };
@@ -369,10 +489,12 @@ export async function saveState(slotId = currentSaveSlot, name = null) {
     await GameDB.saves.put(saveData);
     currentSaveSlot = slotId;
     
-    // 静默保存，不输出日志（避免刷屏）
-    // console.log(`💾 已保存到: ${saveData.name}`);
+    // 保存成功日志
+    console.log(`💾 已保存: ${saveData.name} | 抽卡券=${state.tickets} 金币=${state.gold} 干员数=${Object.keys(state.inventory || {}).length}`);
+    return true;
   } catch (error) {
     console.error('❌ 保存存档失败:', error);
+    return false;
   }
 }
 

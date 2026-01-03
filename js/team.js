@@ -2,7 +2,7 @@
 
 import { state, store } from './state.js';
 import { CHARACTER_DATA } from './data.js';
-import { CONFIG, applyPotentialBonus } from './config.js';
+import { CONFIG, applyPotentialBonus, getDisplayRarity } from './config.js';
 import { createSpineMedia } from './ui.js';
 import { showCharDetail } from './charDetail.js';
 import { SkinSystem } from './skin.js';
@@ -33,7 +33,16 @@ function renderTeamSlots() {
   if (!slotsDiv) return;
   
   // 检查队伍和选中状态是否有变化
-  const currentTeam = JSON.stringify(state.team);
+  // 修复：缓存key中包含潜能信息，确保潜能变化时能触发重新渲染
+  const teamWithPotential = state.team.map(name => {
+    if (!name) return null;
+    return {
+      name,
+      potential: state.inventory[name]?.potential || 1,
+      breakthrough: state.inventory[name]?.breakthrough || null
+    };
+  });
+  const currentTeam = JSON.stringify(teamWithPotential);
   const slotChanged = lastSelectedSlot !== selectedSlot;
   
   if (lastRenderedTeam === currentTeam && !slotChanged && slotsDiv.children.length > 0) {
@@ -52,7 +61,9 @@ function renderTeamSlots() {
     if (charName) {
       const data = CHARACTER_DATA[charName];
       const potential = state.inventory[charName]?.potential || 1;
-      const stars = '★'.repeat(data.rarity);
+      const breakthrough = state.inventory[charName]?.breakthrough || null;
+      const displayRarity = getDisplayRarity(data.rarity, breakthrough);
+      const stars = '★'.repeat(displayRarity);
       
       // 获取时装spine（如果有）
       const spineData = data.id && SkinSystem 
@@ -65,12 +76,23 @@ function renderTeamSlots() {
       const leaderBadge = isLeader ? '<div class="leader-badge">👑队长</div>' : '';
       const leaderSkillInfo = isLeader && hasLeaderSkill ? `<div class="leader-skill-info">队长技：${LEADER_BONUS[charName].skill}强化</div>` : '';
       
+      // 计算突破后的ATK值
+      let atkValue = applyPotentialBonus(data.atk, potential);
+      if (breakthrough === 'stats') {
+        atkValue += Math.floor(data.atk * CONFIG.BREAKTHROUGH.STATS_EXTRA_BONUS);
+      }
+      
+      // 突破标识
+      const breakthroughBadge = breakthrough ?
+        `<div class="breakthrough-slot-badge">${breakthrough === 'stats' ? '💠' : '⚡'}</div>` : '';
+      
       slot.innerHTML = `
         ${leaderBadge}
+        ${breakthroughBadge}
         ${mediaHtml}
         <div class="slot-stars">${stars}</div>
         <div class="slot-name">${charName}</div>
-        <div class="slot-info">潜能${potential} | ATK:${applyPotentialBonus(data.atk, potential)}</div>
+        <div class="slot-info">潜能${potential} | ATK:${atkValue}</div>
         ${leaderSkillInfo}
       `;
     } else {
@@ -104,16 +126,44 @@ function renderCharacterList() {
   sorted.forEach(([name, info]) => {
     const data = CHARACTER_DATA[name];
     const potential = info.potential || 1;
+    const breakthrough = info.breakthrough || null;
     const bonus = Math.round((potential - 1) * CONFIG.POTENTIAL_BONUS_PER_LEVEL * 100);
-    const stars = '★'.repeat(data.rarity);
+    const displayRarity = getDisplayRarity(data.rarity, breakthrough);
+    const stars = '★'.repeat(displayRarity);
     
     const hasLeaderSkill = LEADER_BONUS && LEADER_BONUS[name];
     const leaderIcon = hasLeaderSkill ? '👑' : '';
     
+    // 计算突破后的属性值
+    let hpValue = applyPotentialBonus(data.hp, potential);
+    let atkValue = applyPotentialBonus(data.atk, potential);
+    let defValue = applyPotentialBonus(data.def, potential);
+    let spdValue = data.spd;
+    
+    if (breakthrough === 'stats') {
+      hpValue += Math.floor(data.hp * CONFIG.BREAKTHROUGH.STATS_EXTRA_BONUS);
+      atkValue += Math.floor(data.atk * CONFIG.BREAKTHROUGH.STATS_EXTRA_BONUS);
+      defValue += Math.floor(data.def * CONFIG.BREAKTHROUGH.STATS_EXTRA_BONUS);
+    } else if (breakthrough === 'speed') {
+      spdValue = Math.floor(data.spd * (1 + CONFIG.BREAKTHROUGH.SPEED_BONUS));
+    }
+    
     const item = document.createElement('div');
-    // 如果有槽位选中，添加 can-assign 类
+    // 如果有槽位选中，添加 can-assign 类；突破后添加 star-7 类
     const canAssignClass = selectedSlot !== null ? ' can-assign' : '';
-    item.className = `char-item star-${data.rarity}${canAssignClass}`;
+    const breakthroughClass = breakthrough ? ' star-7 breakthrough' : '';
+    item.className = `char-item star-${data.rarity}${canAssignClass}${breakthroughClass}`;
+    
+    // 突破信息显示
+    const breakthroughbonus = bonus + Math.round(CONFIG.BREAKTHROUGH.STATS_EXTRA_BONUS * 100);
+    let bonusText = '';
+    if (breakthrough === 'stats') {
+      bonusText = `<div class="char-bonus breakthrough-bonus"> +${breakthroughbonus}% 属性</div>`;
+    } else if (breakthrough === 'speed' && bonus > 0) {
+      bonusText = `<div class="char-bonus breakthrough-bonus"> +40% 速度</div>`;
+    } else if (bonus > 0) {
+      bonusText = `<div class="char-bonus">+${bonus}% 属性</div>`;
+    }
     
     item.innerHTML = `
       <div class="char-header">
@@ -124,12 +174,12 @@ function renderCharacterList() {
       </div>
       <div class="char-name">${leaderIcon}${name}</div>
       <div class="char-stats-grid">
-        <div>HP:${applyPotentialBonus(data.hp, potential)}</div>
-        <div>ATK:${applyPotentialBonus(data.atk, potential)}</div>
-        <div>DEF:${applyPotentialBonus(data.def, potential)}</div>
-        <div>SPD:${data.spd}</div>
+        <div class="${breakthrough === 'stats' ? 'stat-enhanced' : ''}">HP:${hpValue}</div>
+        <div class="${breakthrough === 'stats' ? 'stat-enhanced' : ''}">ATK:${atkValue}</div>
+        <div class="${breakthrough === 'stats' ? 'stat-enhanced' : ''}">DEF:${defValue}</div>
+        <div class="${breakthrough === 'speed' ? 'stat-enhanced' : ''}">SPD:${spdValue}</div>
       </div>
-      ${bonus > 0 ? `<div class="char-bonus">+${bonus}% 属性</div>` : ''}
+      ${bonusText}
       ${hasLeaderSkill ? `<div class="char-leader-hint">可作为队长</div>` : ''}
     `;
     

@@ -1,232 +1,149 @@
-// ==================== 深度学习AI - 数据层 ====================
+// ==================== SmartAI 数据层 ====================
+// 
+// 包含：
+// - IndexedDB 数据库定义
+// - 特征编码常量
+// - AI 配置参数
+//
+// ========================================================================
 
-// 初始化数据库
-const SmartAI_DB = new Dexie('SmartAI_Database');
-SmartAI_DB.version(1).stores({
-  // 战斗记录
-  battles: '++id, timestamp, result, totalTurns, playerTeam',
-  // 训练数据（每个回合的状态和玩家行动）
-  trainingData: '++id, battleId, turn, state, action, result',
-  // 模型参数
-  modelParams: 'id, weights, updatedAt'
+// 初始化数据库 - V5 TensorFlow.js版本
+export const SmartAI_DB = new Dexie('SmartAI_Database');
+
+// V5: TensorFlow.js 版本，增加即时奖励记录
+SmartAI_DB.version(5).stores({
+  battles: '++id, timestamp, result, totalTurns, playerTeam, floor, dataVersion',
+  trainingData: '++id, battleId, turn, state, action, reward, result, dataVersion',
+  modelParams: 'id, weights, updatedAt, version',
+  trainingStats: 'id, epoch, loss, accuracy, timestamp'
 });
 
-// ==================== 数据收集器 ====================
+// ==================== 特征编码常量 ====================
 
-const SmartAI_Data = {
-  // 当前战斗状态
-  currentBattleId: null,
-  currentTurn: 0,
-  
-  // ==================== 战斗记录 ====================
-  
-  // 开始记录战斗
-  async startBattleRecord(playerTeam) {
-    const battle = {
-      timestamp: Date.now(),
-      result: null,
-      totalTurns: 0,
-      playerTeam: playerTeam.map(p => p.name || p)
-    };
-    
-    this.currentBattleId = await SmartAI_DB.battles.add(battle);
-    this.currentTurn = 0;
-    console.log(`🎮 开始记录战斗 #${this.currentBattleId}`);
-    
-    return this.currentBattleId;
-  },
-  
-  // 记录玩家行动
-  async recordPlayerAction(battleState, action) {
-    if (!this.currentBattleId) return;
-    
-    this.currentTurn++;
-    
-    const record = {
-      battleId: this.currentBattleId,
-      turn: this.currentTurn,
-      state: this.extractFeatures(battleState),
-      action: this.encodeAction(action),
-      result: null
-    };
-    
-    await SmartAI_DB.trainingData.add(record);
-    console.log(`📝 记录行动: ${action.skillName} → ${action.targetName || '无目标'}`);
-  },
-  
-  // 结束战斗记录
-  async endBattleRecord(victory) {
-    if (!this.currentBattleId) return;
-    
-    // 更新战斗结果
-    await SmartAI_DB.battles.update(this.currentBattleId, {
-      result: victory ? 'win' : 'lose',
-      totalTurns: this.currentTurn
-    });
-    
-    // 更新所有回合的结果权重
-    // 胜利的行动权重高，失败的行动权重低
-    const resultWeight = victory ? 1.0 : -0.3;
-    await SmartAI_DB.trainingData
-      .where('battleId')
-      .equals(this.currentBattleId)
-      .modify({ result: resultWeight });
-    
-    console.log(`📝 战斗 #${this.currentBattleId} 记录完成: ${victory ? '胜利' : '失败'}`);
-    
-    const battleId = this.currentBattleId;
-    this.currentBattleId = null;
-    
-    return battleId;
-  },
-  
-  // ==================== 特征提取 ====================
-  
-  // 提取战场状态特征
-  extractFeatures(battleState) {
-    const features = [];
-    
-    // 我方单位特征（最多4个干员 + 4个召唤物 = 8个）
-    const maxAllies = 8;
-    const allies = [...(battleState.allies || []), ...(battleState.summons || [])];
-    
-    for (let i = 0; i < maxAllies; i++) {
-      const unit = allies[i];
-      if (unit && unit.currentHp > 0) {
-        features.push(
-          unit.currentHp / unit.maxHp,                    // HP%
-          (unit.energy || 0) / (unit.maxEnergy || 100),   // 能量%
-          this.normalize(unit.atk, 500),                  // ATK归一化
-          this.normalize(unit.def, 100),                  // DEF归一化
-          this.normalize(unit.spd, 150),                  // SPD归一化
-          unit.isSummon ? 1 : 0,                          // 是否召唤物
-          unit.stunDuration > 0 ? 1 : 0,                  // 是否眩晕
-          unit.isSummoner ? 1 : 0                         // 是否召唤师
-        );
-      } else {
-        features.push(0, 0, 0, 0, 0, 0, 0, 0);  // 空位或死亡
-      }
-    }
-    
-    // 敌方单位特征（最多4个）
-    const maxEnemies = 4;
-    const enemies = battleState.enemies || [];
-    
-    for (let i = 0; i < maxEnemies; i++) {
-      const unit = enemies[i];
-      if (unit && unit.currentHp > 0) {
-        features.push(
-          unit.currentHp / unit.maxHp,                    // HP%
-          this.normalize(unit.atk, 500),                  // ATK
-          this.normalize(unit.def, 100),                  // DEF
-          this.normalize(unit.spd, 150),                  // SPD
-          unit.shieldBroken ? 1 : 0,                      // 护盾已破
-          (unit.currentShield || 0) / Math.max(1, unit.shield || 1),  // 护盾%
-          unit.stunDuration > 0 ? 1 : 0,                  // 是否眩晕
-          this.normalize(unit.buffAtk || 0, 200)          // buff加成
-        );
-      } else {
-        features.push(0, 0, 0, 0, 0, 0, 0, 0);
-      }
-    }
-    
-    // 当前行动单位特征
-    const current = battleState.currentUnit;
-    if (current) {
-      features.push(
-        current.currentHp / current.maxHp,
-        (current.energy || 0) / (current.maxEnergy || 100),
-        current.isEnemy ? 1 : 0,
-        current.isSummon ? 1 : 0
-      );
-    } else {
-      features.push(0, 0, 0, 0);
-    }
-    
-    // 战斗信息
-    features.push(
-      this.normalize(battleState.turn || 0, 100),         // 回合数
-      this.normalize(battleState.floor || 1, 100),        // 无尽模式层数
-      allies.filter(a => a && a.currentHp > 0).length / maxAllies,  // 我方存活率
-      enemies.filter(e => e && e.currentHp > 0).length / maxEnemies // 敌方存活率
-    );
-    
-    return features;
-  },
-  
-  // 归一化
-  normalize(value, max) {
-    return Math.min(1, Math.max(0, value / max));
-  },
-  
-  // 编码玩家行动
-  encodeAction(action) {
-    return {
-      skillIndex: action.skillIndex || 0,
-      targetIndex: action.targetIndex || 0,
-      skillName: action.skillName || '',
-      targetName: action.targetName || ''
-    };
-  },
-  
-  // ==================== 数据获取 ====================
-  
-  // 获取所有训练数据
-  async getAllTrainingData() {
-    return await SmartAI_DB.trainingData.toArray();
-  },
-  
-  // 获取战斗统计
-  async getStats() {
-    const battles = await SmartAI_DB.battles.toArray();
-    const wins = battles.filter(b => b.result === 'win').length;
-    const losses = battles.filter(b => b.result === 'lose').length;
-    const dataCount = await SmartAI_DB.trainingData.count();
-    
-    return {
-      totalBattles: battles.length,
-      wins,
-      losses,
-      winRate: battles.length > 0 ? (wins / battles.length * 100).toFixed(1) + '%' : '0%',
-      trainingDataCount: dataCount
-    };
-  },
-  
-  // 获取战斗数量
-  async getBattleCount() {
-    return await SmartAI_DB.battles.count();
-  },
-  
-  // ==================== 模型存储 ====================
-  
-  // 保存模型参数
-  async saveModelParams(weights) {
-    await SmartAI_DB.modelParams.put({
-      id: 'main',
-      weights: JSON.stringify(weights),
-      updatedAt: Date.now()
-    });
-    console.log('💾 模型参数已保存');
-  },
-  
-  // 加载模型参数
-  async loadModelParams() {
-    const saved = await SmartAI_DB.modelParams.get('main');
-    if (saved) {
-      return JSON.parse(saved.weights);
-    }
-    return null;
-  },
-  
-  // ==================== 数据清理 ====================
-  
-  // 清除所有数据
-  async clearAllData() {
-    await SmartAI_DB.battles.clear();
-    await SmartAI_DB.trainingData.clear();
-    await SmartAI_DB.modelParams.clear();
-    this.currentBattleId = null;
-    this.currentTurn = 0;
-    console.log('🗑️ 所有AI数据已清除');
-  }
+// 词缀列表（用于特征编码）- 13个
+export const AFFIX_LIST = [
+  'thorns',      // 荆棘反伤
+  'regen',       // 回血
+  'berserk',     // 狂暴（低血量增伤）
+  'multiStrike', // 多段攻击
+  'swift',       // 迅捷（速度加成）
+  'fortify',     // 强韧（减伤）
+  'dodge',       // 闪避
+  'shield',      // 护盾
+  'vampiric',    // 吸血
+  'aura',        // 光环（队友增益）
+  'undying',     // 不死（首次致死保留1HP）
+  'split',       // 分裂（死亡召唤小怪）
+  'explosion'    // 爆炸（死亡伤害）
+];
+
+// Roguelike强化列表（用于特征编码）- 8个
+export const BUFF_LIST = [
+  // stat类型
+  'atkUp',     // 攻击力提升
+  'defUp',     // 防御力提升
+  'hpUp',      // 生命值提升
+  'spdUp',     // 速度提升
+  // special类型
+  'critUp',    // 暴击率提升
+  'vampUp',    // 吸血效果
+  'shield',    // 护盾
+  'extraLife'  // 额外生命
+];
+
+// 持续效果类型列表（用于特征编码）- 3个
+export const DEBUFF_STAT_LIST = ['atk', 'def', 'spd'];
+
+// ==================== 职业系统常量 ====================
+
+// 职业列表（8种）- 用于特征编码
+export const CLASS_LIST = ['先锋', '近卫', '狙击', '术师', '医疗', '重装', '特种', '辅助'];
+
+// 职业击杀优先级奖励（敌人视角）
+// 敌人攻击不同职业目标时的额外奖励
+export const CLASS_PRIORITY_REWARD = {
+  '医疗': 6,   // 持续治疗，最高优先级
+  '先锋': 5,   // 供能全队（缪尔赛思等）
+  '辅助': 5,   // 全队buff/debuff（铃兰等）
+  '术师': 4,   // 高爆发AOE（艾雅法拉等）
+  '狙击': 3,   // 远程单点输出
+  '特种': 3,   // 控制/功能性（红、崖心等）
+  '近卫': 2,   // 主力近战输出
+  '重装': 1    // 肉盾，最后击杀
 };
+
+// ==================== AI 配置参数 ====================
+
+export const AI_CONFIG = {
+  // 训练门槛
+  MIN_BATTLES_TO_TRAIN: 15,    // 最少15场战斗后开始训练
+
+  // 优化器参数
+  LEARNING_RATE: 0.001,         // Adam优化器学习率
+  BATCH_SIZE: 32,               // 批量大小
+  EPOCHS: 20,                   // 训练轮数
+
+  // Experience Replay
+  REPLAY_BUFFER_SIZE: 5000,     // 经验回放缓冲区大小
+
+  // ε-greedy 探索策略
+  EPSILON_START: 1.0,           // 初始探索率（100%随机）
+  EPSILON_END: 0.05,            // 最终探索率（5%随机）
+  EPSILON_DECAY: 0.995,         // 探索率衰减系数
+
+  // 神经网络结构
+  HIDDEN_UNITS_1: 128,          // 第一隐藏层神经元
+  HIDDEN_UNITS_2: 64,           // 第二隐藏层神经元
+  HIDDEN_UNITS_3: 32,           // 第三隐藏层神经元
+  DROPOUT_RATE: 0.2,            // Dropout比率
+
+  // 输入/输出维度
+  // V6: 193 + 32(职业 one-hot) = 225
+  INPUT_SIZE: 225,              // 输入特征维度（含职业编码）
+  SKILL_OUTPUT: 10,             // 技能输出维度
+  TARGET_OUTPUT: 8              // 目标输出维度
+};
+
+// ==================== 特征维度说明 ====================
+/*
+ * INPUT_SIZE = 193 特征分布：
+ * 
+ * 我方单位 (最多8个，每个11特征) = 88
+ *   - currentHp / maxHp          血量比例
+ *   - energy / maxEnergy         能量比例
+ *   - atk / 500                  攻击力归一化
+ *   - def / 100                  防御力归一化
+ *   - spd / 150                  速度归一化
+ *   - isSummon                   是否召唤物
+ *   - stunDuration > 0           是否眩晕
+ *   - buffAtk / 500              攻击Buff
+ *   - buffAtkPercent             百分比攻击Buff
+ *   - buffDef / 100              防御Buff
+ *   - skillUseCount / 10         技能使用次数
+ * 
+ * 敌方单位 (最多4个，每个31特征) = 124
+ *   - currentHp / maxHp          血量比例
+ *   - atk / 500                  攻击力归一化
+ *   - def / 100                  防御力归一化
+ *   - spd / 150                  速度归一化
+ *   - shieldBroken               护盾是否破碎
+ *   - currentShield / shield     护盾比例
+ *   - stunDuration > 0           是否眩晕
+ *   - [13个词缀 one-hot]         词缀特征
+ *   - [3个debuff状态]            持续减益状态
+ *   - [8个职业 one-hot]          职业特征 (V6新增)
+ *
+ * 当前行动单位 = 3
+ *   - currentHp / maxHp
+ *   - energy / maxEnergy
+ *   - isEnemy
+ *
+ * 战斗信息 = 2
+ *   - turn / 100                 回合数归一化
+ *   - floor / 100                层数归一化
+ *
+ * 玩家Roguelike强化 = 8
+ *   - [8个buff one-hot]
+ *
+ * 总计: 88 + 124 + 3 + 2 + 8 = 225 (V6)
+ */

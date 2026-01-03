@@ -4,10 +4,11 @@ console.log('🔄 无尽模式模块加载中...');
 
 import { CHARACTER_DATA } from '../data.js';
 import { state, store, GameDB, battle, resetBattle } from '../state.js';
-import { CONFIG, applyPotentialBonus } from '../config.js';
+import { CONFIG, applyPotentialBonus, canBreakthrough, getDisplayRarity } from '../config.js';
 import { calculateTurnOrder, nextTurn } from '../battle.js';
 import { BattleRenderer } from '../battleRenderer.js';
 import { showModal, closeModal, updateResourceUI, addBattleLog, closeBattleField } from '../ui.js';
+import { playEndlessBGM, playMainBGM } from '../audio.js';
 import { SmartAI } from './smartAI.js';
 import { SmartAI_Battle } from './smartAI_battle.js';
 import { SummonSystem } from '../summon.js';
@@ -428,12 +429,25 @@ export const EndlessMode = {
     battle.allies = team.map((name, index) => {
       const data = CHARACTER_DATA[name];
       const potential = state.inventory[name]?.potential || 1;
+      const breakthrough = state.inventory[name]?.breakthrough || null;
       
-      // 基础属性
+      // 基础属性（先应用潜能加成）
       let baseHp = applyPotentialBonus(data.hp, potential);
       let baseAtk = applyPotentialBonus(data.atk, potential);
       let baseDef = applyPotentialBonus(data.def, potential);
       let baseSpd = data.spd;
+      
+      // 应用突破加成
+      if (breakthrough === 'stats') {
+        // 属性突破：额外+40%基础属性（加法方式，总共+100%）
+        const extraBonus = CONFIG.BREAKTHROUGH.STATS_EXTRA_BONUS;
+        baseHp += Math.floor(data.hp * extraBonus);
+        baseAtk += Math.floor(data.atk * extraBonus);
+        baseDef += Math.floor(data.def * extraBonus);
+      } else if (breakthrough === 'speed') {
+        // 速度突破：+40%速度
+        baseSpd = Math.floor(baseSpd * (1 + CONFIG.BREAKTHROUGH.SPEED_BONUS));
+      }
       
       // 应用Roguelike强化
       const hpBonus = this.getStatBonus('hp');
@@ -523,6 +537,9 @@ export const EndlessMode = {
     // 显示战斗界面
     document.getElementById('stage-panel').style.display = 'none';
     document.getElementById('battle-field').classList.add('active');
+    
+    // 播放无尽模式BGM（使用歌单）
+    playEndlessBGM();
     
     // 显示层数信息
     addBattleLog(`${stage.name}`, 'system');
@@ -784,6 +801,9 @@ export const EndlessMode = {
   // 结束无尽模式
   async end(victory) {
     this.active = false;
+    
+    // 切换回主界面BGM（使用歌单）
+    playMainBGM();
     
     // 清理召唤系统
     if (typeof SummonSystem !== 'undefined') {

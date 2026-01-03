@@ -3,7 +3,7 @@
 import { state, battle, saveState, resetBattle, syncSummons } from './state.js';
 import { CONFIG, applyPotentialBonus } from './config.js';
 import { CHARACTER_DATA, STAGES } from './data.js';
-import { AudioManager } from './audio.js';
+import { AudioManager, playBattleBGM, playMainBGM } from './audio.js';
 import { 
   addBattleLog, showModal, 
   closeBattleField, clearAllSpineInstances, updateResourceUI 
@@ -67,17 +67,36 @@ export function startBattle(stage) {
   battle.allies = team.map((name, index) => {
     const data = CHARACTER_DATA[name];
     const potential = state.inventory[name]?.potential || 1;
+    const breakthrough = state.inventory[name]?.breakthrough || null;
+    
+    // 先计算潜能加成
+    let hp = applyPotentialBonus(data.hp, potential);
+    let atk = applyPotentialBonus(data.atk, potential);
+    let def = applyPotentialBonus(data.def, potential);
+    let spd = data.spd;
+    
+    // 应用突破加成
+    if (breakthrough === 'stats') {
+      // 属性突破：额外 +40% 的基础值
+      hp += Math.floor(data.hp * CONFIG.BREAKTHROUGH.STATS_EXTRA_BONUS);
+      atk += Math.floor(data.atk * CONFIG.BREAKTHROUGH.STATS_EXTRA_BONUS);
+      def += Math.floor(data.def * CONFIG.BREAKTHROUGH.STATS_EXTRA_BONUS);
+    } else if (breakthrough === 'speed') {
+      // 速度突破：基础速度 × 1.4
+      spd = Math.floor(data.spd * (1 + CONFIG.BREAKTHROUGH.SPEED_BONUS));
+    }
+    
     return {
       id: `ally_${name}_${Date.now()}_${index}`,  // 添加唯一ID
       name,
       rarity: data.rarity,
-      hp: applyPotentialBonus(data.hp, potential),
-      atk: applyPotentialBonus(data.atk, potential),
-      def: applyPotentialBonus(data.def, potential),
-      spd: data.spd,
+      hp: hp,
+      atk: atk,
+      def: def,
+      spd: spd,
       skills: [...data.skills],
-      currentHp: applyPotentialBonus(data.hp, potential),
-      maxHp: applyPotentialBonus(data.hp, potential),
+      currentHp: hp,
+      maxHp: hp,
       energy: 0,
       maxEnergy: 100,
       buffAtk: 0,
@@ -88,6 +107,7 @@ export function startBattle(stage) {
       isLeader: index === 0,
       isSummoner: data.summoner || false,  // 是否是召唤师
       isSummon: false,                      // 不是召唤物
+      breakthrough: breakthrough,           // 保存突破状态
       unitId: `ally-${name}-${Date.now()}-${index}`
     };
   });
@@ -132,8 +152,8 @@ export function startBattle(stage) {
   document.getElementById('stage-panel').style.display = 'none';
   document.getElementById('battle-field').classList.add('active');
   
-  // 切换战斗BGM
-  AudioManager.playBGM('battle');
+  // 切换战斗BGM（使用歌单）
+  playBattleBGM();
   
   addBattleLog('⚔️ 战斗开始！', 'system');
   calculateTurnOrder();
@@ -251,12 +271,6 @@ export function executePlayerSkill(skill, target) {
   if (typeof playSkillAnimation === 'function') {
     playSkillAnimation(user.name, skill.name);
   }
-  
-  // ====== 新增：记录玩家行动给SmartAI ======
-  if (battle.isEndless && typeof SmartAI_Battle !== 'undefined') {
-    SmartAI_Battle.recordPlayerSkill(user, skill.name, target);
-  }
-  // ====== 新增结束 ======
 
   // 日志（区分召唤物）
   const unitPrefix = user.isSummon ? '🔮' : '';
@@ -532,6 +546,12 @@ function enemyTurn(enemy) {
   } else {
     decision = getEnemyDecision(enemy, aliveAllies, aliveEnemies);
   }
+  
+  // ====== 新增：记录敌人行动给SmartAI ======
+  if (battle.isEndless && typeof SmartAI_Battle !== 'undefined') {
+    SmartAI_Battle.recordEnemyAction(enemy, decision, allTargets, aliveEnemies);
+  }
+  // ====== 新增结束 ======
 
   // 日志
   addBattleLog(`${enemy.name}【${decision.strategy}·${decision.skill.name}】`, 'system');
@@ -558,18 +578,18 @@ function endBattle(victory) {
   battle.active = false;
   // renderedSpineUnits.clear(); // 移至 BattleRenderer.init() 或不操作
 
-  // 切换回主界面BGM
-  AudioManager.playBGM('main');
-
-  // ====== 新增：无尽模式处理 ======
+  // ====== 无尽模式处理（BGM由EndlessMode.end()控制） ======
   if (battle.isEndless && typeof EndlessMode !== 'undefined') {
     if (victory) {
       EndlessMode.onVictory();
     } else {
       EndlessMode.onDefeat();
     }
-    return;  // 无尽模式有自己的弹窗，直接返回
+    return;  // 无尽模式有自己的弹窗和BGM控制，直接返回
   }
+
+  // 普通战斗结束，切换回主界面BGM（使用歌单）
+  playMainBGM();
 
   // 清理召唤系统
   if (typeof SummonSystem !== 'undefined') {
@@ -610,8 +630,15 @@ export function clearUnitSelection() {
 export function fleeBattle() {
   battle.active = false;
   
-  // 切换回主界面BGM
-  AudioManager.playBGM('main');
+  // 无尽模式撤退走专门的逻辑
+  if (battle.isEndless && typeof EndlessMode !== 'undefined') {
+    addBattleLog('撤退了...', 'system');
+    EndlessMode.end(true);  // true表示主动撤退，可以获得奖励
+    return;
+  }
+  
+  // 普通战斗撤退，切换回主界面BGM（使用歌单）
+  playMainBGM();
   
   // 清理召唤系统
   if (typeof SummonSystem !== 'undefined') {

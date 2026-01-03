@@ -15,17 +15,16 @@
 //
 // ========================================================================
 
-import { initSaveSystem, currentSaveSlot, getSaveList, loadState, deleteSave, createNewSave, exportSave, importSave } from './state.js';
-import { updateResourceUI, showPage, showModal, closeModal, initSaveManagerScrollbar } from './ui.js';
+import { initSaveSystem, currentSaveSlot, getCurrentSaveSlot, getSaveList, loadState, deleteSave, createNewSave, exportSave, importSave, state, store } from './state.js';
+import { updateResourceUI, showPage, showModal, closeModal, initSaveManagerScrollbar, clearAllSpineInstances } from './ui.js';
+import { updateTeamUI, clearTeamRenderCache } from './team.js';
 import { dailyLogin, gachaSingle, gachaTen } from './gacha.js';
 import { fleeBattle } from './battle.js';
 import { showEndlessMode, initEndlessMode } from './endless_and_smartAI/endless.js';
-import { AudioManager, BGMPlayer, toggleBGMPlayer } from './audio.js';
+import { AudioManager, BGMPlayer, toggleBGMPlayer, playMainBGM } from './audio.js';
 import { SmartAI } from './endless_and_smartAI/smartAI.js';
-import './team.js'; // Ensure team.js runs for window bindings
-import './exchange.js'; // Ensure exchange.js runs for window bindings
-import './charDetail.js'; // Ensure charDetail.js runs for window bindings
-import './shop.js'; // Ensure shop.js runs for window bindings
+import './exchange.js'; // 导入以执行模块并绑定 window 函数
+import './charDetail.js'; // 导入以执行模块并绑定 window 函数
 import { initShopPageObserver } from './shop.js';
 import { initCutscene } from './cutscene.js';
 
@@ -70,13 +69,17 @@ async function init() {
     // 初始化BGM播放器
     BGMPlayer.init();
 
-    // 播放主界面BGM
-    AudioManager.playBGM('main');
+    // 播放主界面BGM（使用歌单）
+    playMainBGM();
     
     // 初始化存档管理器滚动条（滚动时显示，停止后隐藏）
     if (typeof initSaveManagerScrollbar === 'function') {
       initSaveManagerScrollbar();
     }
+    
+    // 绑定调试工具到 window（方便控制台调试）
+    window.state = state;
+    window.store = store;
     
     console.log('✅ 游戏初始化完成！');
   } catch (error) {
@@ -145,6 +148,7 @@ function bindOtherEvents() {
  */
 async function showSaveManager() {
   const saves = await getSaveList();
+  const currentSlot = getCurrentSaveSlot();
   
   let content = '<div class="save-manager">';
   
@@ -154,7 +158,7 @@ async function showSaveManager() {
     content += '<div class="save-list">';
     saves.forEach(save => {
       const date = new Date(save.timestamp).toLocaleString();
-      const isCurrent = save.id === currentSaveSlot;
+      const isCurrent = save.id === currentSlot;
       content += `
         <div class="save-item ${isCurrent ? 'current' : ''}">
           <div class="save-info">
@@ -189,7 +193,7 @@ async function showSaveManager() {
 
 /**
  * 加载指定存档槽位
- * 
+ *
  * @param {string} slotId - 存档槽位ID
  */
 async function loadSaveSlot(slotId) {
@@ -198,18 +202,33 @@ async function loadSaveSlot(slotId) {
   }
   
   await loadState(slotId);
+  
+  // 刷新所有UI
   updateResourceUI();
+  
+  // 清理Spine缓存并刷新队伍UI
+  clearTeamRenderCache();
+  clearAllSpineInstances();
+  
+  // 如果当前在队伍页面，刷新队伍显示
+  const teamPage = document.getElementById('page-team');
+  if (teamPage && teamPage.classList.contains('active')) {
+    updateTeamUI();
+  }
+  
   closeModal();
+  
+  console.log(`✅ 已切换到存档: ${slotId}`);
   alert('存档已加载');
 }
 
 /**
  * 删除指定存档槽位
- * 
+ *
  * @param {string} slotId - 存档槽位ID
  */
 async function deleteSaveSlot(slotId) {
-  if (slotId === currentSaveSlot) {
+  if (slotId === getCurrentSaveSlot()) {
     alert('不能删除当前正在使用的存档');
     return;
   }

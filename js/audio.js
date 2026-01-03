@@ -15,24 +15,49 @@ export const AudioManager = {
   // 是否静音
   muted: false,
   
-  // ==================== BGM配置 ====================
+  // ==================== BGM库（所有可用的BGM曲目） ====================
+  // 这是一个BGM曲库，包含所有可用的BGM
+  // 歌单(PLAYLISTS)通过key引用这里的曲目
+  // 添加新BGM步骤：1. 在这里添加条目  2. 在歌单中引用
   BGM_LIST: {
-    // 主界面BGM
-    main: {
-      src: 'assets/bgm/main.mp3',
+    // BGM 1: 无限流（主界面默认曲）
+    bgm_main1: {
+      name: '无限流',
+      src: 'assets/bgm/m_sys_void_combine.mp3',
       loop: true
     },
-    // 战斗BGM（普通关卡和无尽模式共用）
-    battle: {
-      src: 'assets/bgm/battle.mp3',
+    bgm_main2: {
+    name: 'Rhodes Island (2nd Edition)',
+    src: 'assets/bgm/m_sys_title_combine.mp3',
+    loop: true
+    },
+    bgm_main3: {
+    name: '泛用型自动化解决方案0.3.2.9f2',
+    src: 'assets/bgm/m_sys_science_combine.mp3',
+    loop: true
+    },
+    // BGM 2: 龙门战斗曲
+    bgm_battle1: {
+      name: '龙门作战-凌云',
+      src: 'assets/bgm/m_bat_longmenbat_combine.mp3',
       loop: true
     },
-    // 无尽模式专属BGM
-    endless: {
-      src: 'assets/bgm/endless.mp3',
-      loop: true
+    bgm_battle2: {
+    name: 'Succession (Short Ver.) (Loop)',
+    src: 'assets/bgm/m_bat_reawaken_loop.mp3',
+    loop: true
+    },
+    bgm_battle3: {
+    name: '生命线',
+    src: 'assets/bgm/m_bat_act43d0_2_combine.mp3',
+    loop: true
     }
-    // 注：抽卡页面不使用BGM
+    // 添加更多BGM示例：
+    // bgm_xxx: {
+    //   name: '显示名称',
+    //   src: 'assets/bgm/文件名.mp3',
+    //   loop: true
+    // }
   },
   
   // ==================== 音效配置 ====================
@@ -238,25 +263,25 @@ export const AudioManager = {
 
 // ==================== BGM播放器系统 ====================
 export const BGMPlayer = {
-  // 多播放列表配置
+  // ==================== 歌单配置 ====================
+  // 每个歌单可以包含多首歌曲
+  // tracks数组中的key对应AudioManager.BGM_LIST中的key
+  // 要往歌单添加歌曲，只需在tracks数组中添加对应的key即可
   PLAYLISTS: {
     main: {
       name: '🏠 主界面',
-      tracks: [
-        { name: 'BGM - 无限流', key: 'main' }
-      ]
+      // 主界面歌单 - 可以添加多首歌
+      tracks: ['bgm_main1','bgm_main2','bgm_main3']
     },
     battle: {
       name: '⚔️ 战斗',
-      tracks: [
-        { name: '战斗BGM', key: 'battle' }
-      ]
+      // 战斗歌单
+      tracks: ['bgm_battle1']
     },
     endless: {
       name: '🏰 无尽模式',
-      tracks: [
-        { name: '无尽BGM', key: 'endless' }
-      ]
+      // 无尽模式歌单
+      tracks: ['bgm_battle1','bgm_battle2','bgm_battle3']
     }
   },
   
@@ -300,7 +325,15 @@ export const BGMPlayer = {
       return;
     }
     this.currentPlaylistKey = key;
-    this.playlist = this.PLAYLISTS[key].tracks;
+    // 将tracks数组中的key转换为包含name和key的对象
+    const trackKeys = this.PLAYLISTS[key].tracks;
+    this.playlist = trackKeys.map(trackKey => {
+      const bgmConfig = AudioManager.BGM_LIST[trackKey];
+      return {
+        name: bgmConfig ? bgmConfig.name : trackKey,
+        key: trackKey
+      };
+    });
     this.currentIndex = 0;
     this.renderPlaylist();
     this.updateUI();
