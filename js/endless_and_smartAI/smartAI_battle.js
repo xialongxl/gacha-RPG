@@ -191,7 +191,26 @@ export const SmartAI_Battle = {
     }));
     
     // 获取可用目标（玩家单位）
-    const availableTargets = aliveAllies.filter(a => a.currentHp > 0);
+    let availableTargets = aliveAllies.filter(a => a.currentHp > 0);
+    
+    // ====== 玩家嘲讽机制：检查是否有嘲讽单位 ======
+    const tauntTargets = availableTargets.filter(target => {
+      // 召唤物嘲讽
+      if (target.isSummon && target.buffs && target.buffs.taunt) {
+        return true;
+      }
+      // 干员嘲讽（未来扩展用）
+      if (!target.isSummon && target.tauntBuff) {
+        return true;
+      }
+      return false;
+    });
+    
+    // 如果有嘲讽单位，只能从嘲讽单位中选择目标
+    if (tauntTargets.length > 0) {
+      console.log(`🎯 SmartAI: 检测到嘲讽单位，强制限制目标选择`);
+      availableTargets = tauntTargets;
+    }
     
     // 没有目标则返回null
     if (availableTargets.length === 0) return null;

@@ -121,12 +121,28 @@ function chooseEnemySkill(enemy, aliveAllies, aliveEnemies) {
 
 // 智能选择目标
 function chooseTarget(enemy, aliveAllies) {
+  // ====== 玩家嘲讽机制：检查是否有嘲讽单位 ======
+  const tauntTargets = aliveAllies.filter(target => {
+    // 召唤物嘲讽
+    if (target.isSummon && target.buffs && target.buffs.taunt) {
+      return true;
+    }
+    // 干员嘲讽（未来扩展用）
+    if (!target.isSummon && target.tauntBuff) {
+      return true;
+    }
+    return false;
+  });
+  
+  // 如果有嘲讽单位，只能从嘲讽单位中选择目标
+  const validTargets = tauntTargets.length > 0 ? tauntTargets : aliveAllies;
+  
   const calcExpectedDmg = (t) => {
     const tDef = t.def || 0;
     return Math.max(1, Math.floor(enemy.atk - tDef * 0.5));
   };
   
-  const scores = aliveAllies.map(target => {
+  const scores = validTargets.map(target => {
     let score = 0;
     const expectedDmg = calcExpectedDmg(target);
     const targetHp = target.currentHp;
@@ -187,7 +203,14 @@ function chooseTarget(enemy, aliveAllies) {
   });
   
   scores.sort((a, b) => b.score - a.score);
-  return scores[0].target;
+  
+  // 如果选中的是嘲讽单位，添加调试日志
+  const selectedTarget = scores[0].target;
+  if (tauntTargets.length > 0 && tauntTargets.includes(selectedTarget)) {
+    console.log(`🎯 敌人 ${enemy.name} 被嘲讽！必须攻击 ${selectedTarget.name}`);
+  }
+  
+  return selectedTarget;
 }
 
 // 获取AI策略描述

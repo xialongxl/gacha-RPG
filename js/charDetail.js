@@ -7,6 +7,7 @@ import { SKILL_EFFECTS, LEADER_BONUS } from './skillData.js';
 import { SkinSystem } from './skin.js';
 import { showModal, clearSpineInstances, updateResourceUI } from './ui.js';
 import { clearTeamRenderCache, updateTeamUI } from './team.js';
+import { applyHelpTips } from './glossary.js';
 
 // 当前查看的干员
 let currentDetailChar = null;
@@ -157,10 +158,13 @@ export function showCharDetail(charName) {
       costText = `获得 ${skill.gain} 能量`;
     }
     
+    // 应用帮助提示到技能描述
+    const descWithTips = applyHelpTips(skill.desc || '');
+    
     skillDiv.innerHTML = `
       <div class="char-detail-skill-name">${skillName}</div>
       <div class="char-detail-skill-cost">${costText}</div>
-      <div class="char-detail-skill-desc">${skill.desc || ''}</div>
+      <div class="char-detail-skill-desc">${descWithTips}</div>
     `;
     
     skillsDiv.appendChild(skillDiv);

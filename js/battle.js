@@ -9,7 +9,11 @@ import {
   closeBattleField, clearAllSpineInstances, updateResourceUI 
 } from './ui.js';
 
+// 原版 DOM 渲染器（备用）
 import { BattleRenderer } from './battleRenderer.js';
+
+// Pixi 版渲染器
+//import { PixiBattleRenderer as BattleRenderer } from './pixiBattle/index.js';
 
 // 预留 Import，将在后续步骤重构这些文件
 import { getEnemyDecision } from './enemyAI.js';
@@ -539,12 +543,12 @@ function enemyTurn(enemy) {
   
   if (allTargets.length === 0) return;
   
-  // 获取敌人决策
+  // 获取敌人决策（传入所有目标：干员+召唤物）
   let decision;
   if (battle.isEndless && typeof EndlessMode !== 'undefined') {
-    decision = EndlessMode.getEnemyDecision(enemy, aliveAllies, aliveEnemies);
+    decision = EndlessMode.getEnemyDecision(enemy, allTargets, aliveEnemies);
   } else {
-    decision = getEnemyDecision(enemy, aliveAllies, aliveEnemies);
+    decision = getEnemyDecision(enemy, allTargets, aliveEnemies);
   }
   
   // ====== 新增：记录敌人行动给SmartAI ======

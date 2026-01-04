@@ -35,8 +35,8 @@ export const SmartAI = {
   trainingHistory: [],            // 训练历史
   
   // 模型版本
-  // V6: 添加职业 one-hot 编码到特征，添加职业优先级奖励
-  MODEL_VERSION: 6,
+  // V7: 添加嘲讽特征到我方单位编码
+  MODEL_VERSION: 7,
   
   // ==================== 初始化 ====================
   
@@ -362,13 +362,21 @@ export const SmartAI = {
   extractFeatures(battleState) {
     const features = [];
     
-    // 我方单位特征 (8 * 11 = 88)
+    // 我方单位特征 (8 * 12 = 96) - V7: 添加嘲讽特征
     const maxAllies = 8;
     const allies = [...(battleState.allies || []), ...(battleState.summons || [])];
     
     for (let i = 0; i < maxAllies; i++) {
       const unit = allies[i];
       if (unit && unit.currentHp > 0) {
+        // 检查是否有嘲讽
+        let hasTaunt = 0;
+        if (unit.isSummon && unit.buffs && unit.buffs.taunt) {
+          hasTaunt = 1;
+        } else if (!unit.isSummon && unit.tauntBuff) {
+          hasTaunt = 1;
+        }
+        
         features.push(
           unit.currentHp / unit.maxHp,
           (unit.energy || 0) / (unit.maxEnergy || 100),
@@ -380,10 +388,11 @@ export const SmartAI = {
           (unit.buffAtk || 0) / 500,
           (unit.buffAtkPercent || 0),
           (unit.buffDef || 0) / 100,
-          (unit.skillUseCount || 0) / 10
+          (unit.skillUseCount || 0) / 10,
+          hasTaunt  // V7: 嘲讽特征
         );
       } else {
-        for (let j = 0; j < 11; j++) features.push(0);
+        for (let j = 0; j < 12; j++) features.push(0);  // V7: 12个特征
       }
     }
     

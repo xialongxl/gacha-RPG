@@ -39,6 +39,35 @@ export function getUnitDef(unit) {
   return def;
 }
 
+// ==================== 本地ATK计算函数 ====================
+
+/**
+ * 获取单位实际ATK（含所有buff）- 本地版本
+ * 用于避免循环依赖，在伤害计算时实时获取最新ATK
+ * @param {Object} unit - 单位
+ * @returns {number} 实际ATK
+ */
+function getLocalUnitAtk(unit) {
+  let atk = unit.atk;
+  
+  // 固定值加成
+  if (unit.buffAtk) {
+    atk += unit.buffAtk;
+  }
+  
+  // 百分比加成（干员）- 使用小数倍率
+  if (unit.buffAtkMultiplier) {
+    atk = Math.floor(atk * (1 + unit.buffAtkMultiplier));
+  }
+  
+  // 召唤物专属buff - 使用小数倍率
+  if (unit.isSummon && unit.buffs) {
+    atk = Math.floor(atk * (1 + (unit.buffs.atkMultiplier || 0)));
+  }
+  
+  return atk;
+}
+
 // ==================== 伤害效果 ====================
 
 /**
@@ -46,14 +75,18 @@ export function getUnitDef(unit) {
  * @param {Object} ctx - 上下文对象
  * @param {Object} ctx.effect - 效果数据
  * @param {Object} ctx.user - 使用者
- * @param {number} ctx.atk - 实际攻击力
+ * @param {number} ctx.atk - 实际攻击力（预计算值，可能已过时）
  * @param {Object} ctx.target - 目标
  * @param {string} ctx.effectTarget - 目标类型
  * @param {boolean} ctx.isEnemy - 是否敌人使用
  * @param {Object} ctx.result - 结果对象
  */
 export function executeDamageEffect(ctx) {
-  const { effect, user, atk, target, effectTarget, isEnemy, result } = ctx;
+  const { effect, user, target, effectTarget, isEnemy, result } = ctx;
+  
+  // 【修复Bug 1】重新获取最新的ATK值，而不是使用预先计算的ctx.atk
+  // 这确保了self_buff_then_attack（火山）等效果的加成能被正确应用到后续伤害
+  const atk = getLocalUnitAtk(user);
   // 计算狂化加成
   const berserkBonus = getAffixBerserkBonus(user);
   const effectiveAtk = Math.floor(atk * (1 + berserkBonus));
@@ -311,7 +344,7 @@ export function executeHealEffect(ctx) {
   let actualTarget = effectTarget;
   if (!isEnemy && user.sanctuaryMode && (effectTarget === 'ally')) {
     actualTarget = 'all_ally';
-    result.logs.push({ text: `  🌟 圣域群体治疗！`, type: 'system' });
+    result.logs.push({ text: `  🌟 圣域全体疗愈！`, type: 'system' });
   }
   
   switch (actualTarget) {
@@ -508,13 +541,17 @@ export function executeSummonBuffEffect(ctx) {
         buffText = `SPD +${value}`;
         break;
       case 'healPerTurn':
-        buffText = `每回合回血 ${value}%${durationText}`;
+        // 【修复Bug 2】value是小数形式（0.15表示15%），显示时需要乘以100
+        buffText = `每回合回血 ${value * 100}%${durationText}`;
         break;
       case 'doubleAttack':
         buffText = `获得二连击${durationText}`;
         break;
       case 'stunOnHit':
         buffText = `攻击附带眩晕${durationText}`;
+        break;
+      case 'taunt':
+        buffText = `获得嘲讽${durationText}`;
         break;
     }
     result.logs.push({ text: `  → 🔮流形 ${buffText}！`, type: 'system' });
@@ -548,7 +585,8 @@ export function executeOwnerBuffEffect(ctx) {
       buffText = `SPD +${value}`;
       break;
     case 'healPerTurn':
-      buffText = `每回合回血 ${value}%${durationText}`;
+      // 【修复Bug 2】value是小数形式（0.15表示15%），显示时需要乘以100
+      buffText = `每回合回血 ${value * 100}%${durationText}`;
       break;
   }
   result.logs.push({ text: `  → ${user.name} ${buffText}！`, type: 'system' });
@@ -573,7 +611,9 @@ export function executeStackingAtkBuff(ctx) {
   
   if (useCount >= minUses) {
     const buffValue = Math.floor(user.atk * effect.multiplier);
-    user.buffAtk = (user.buffAtk || 0) + buffValue;
+    const mult = effect.multiplier;
+    //user.buffAtk = (user.buffAtk || 0) + buffValue;
+    user.buffAtkMultiplier = (user.buffAtkMultiplier || 0) + mult;
     result.logs.push({ 
       text: `  → 🔥 二重咏唱第${useCount}次！ATK +${buffValue}（+${Math.floor(effect.multiplier * 100)}%）！`, 
       type: 'system' 
@@ -684,7 +724,9 @@ export function executeSelfBuffThenAttack(ctx) {
   const { effect, user, result } = ctx;
   const atkBonus = effect.atkBonus || 1.3;
   const buffValue = Math.floor(user.atk * atkBonus);
-  user.buffAtk = (user.buffAtk || 0) + buffValue;
+  //user.buffAtk = (user.buffAtk || 0) + buffValue;
+  const mult = effect.multiplier;
+  user.buffAtkMultiplier = (user.buffAtkMultiplier || 0) + mult;
   
   result.logs.push({ 
     text: `  → 🌋 火山喷发！${user.name} ATK +${buffValue}（+${Math.floor(atkBonus * 100)}%）！`, 
@@ -788,7 +830,7 @@ export function executeSanctuaryMode(ctx) {
   const { user, result } = ctx;
   user.sanctuaryMode = true;
   result.logs.push({
-    text: `  → 🌟 圣域展开！${user.name}的普攻变为群体治疗！`,
+    text: `  → 🌟 圣域展开！${user.name}的疗愈变为全体疗愈！`,
     type: 'system'
   });
 }

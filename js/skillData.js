@@ -154,10 +154,10 @@ export const SKILL_EFFECTS = {
     ]
   },
   '点燃': {
-    cost: 30,
+    cost: 50,
     gain: 0,
     target: 'single',
-    desc: '消耗30能量，造成370%伤害，周围敌人受185%溅射伤害，目标DEF-25%（持续2回合）',
+    desc: '消耗50能量，造成370%伤害，周围敌人受185%溅射伤害，目标DEF-25%（持续2回合）',
     effects: [
       { type: 'damage', multiplier: 3.7 },
       { type: 'splash_damage', multiplier: 1.85 },
@@ -165,10 +165,10 @@ export const SKILL_EFFECTS = {
     ]
   },
   '火山': {
-    cost: 100,
+    cost: 90,
     gain: 0,
     target: 'random6',
-    desc: '消耗100能量，ATK+130%后随机攻击6个敌人',
+    desc: '消耗90能量，ATK+130%后随机攻击6个敌人',
     effects: [
       { type: 'self_buff_then_attack', atkBonus: 1.3 },
       { type: 'damage', multiplier: 1.0 }
@@ -278,7 +278,7 @@ export const SKILL_EFFECTS = {
     cost: 0,
     gain: 30,
     target: 'ally',
-    desc: '治疗选定的队友，恢复目标等同于100%攻击力的HP，并获得30能量',
+    desc: '治疗选定的目标，其恢复等同于自身100%攻击力的HP，自身获得30能量',
     effects: [
       { type: 'heal', multiplier: 1.0 }
     ]
@@ -359,16 +359,16 @@ export const SKILL_EFFECTS = {
     ]
   },
   '儿时的舞乐': {
-    cost: 80,
+    cost: 60,
     gain: 0,
     target: 'random3',
-    desc: '消耗80能量，攻击力+60%，同时攻击3个敌方单位',
+    desc: '消耗80能量，造成160%攻击力伤害，并同时攻击3个敌方单位',
     effects: [
       { type: 'damage', multiplier: 1.6 }
     ]
   },
   '狐火渺然': {
-    cost: 70,
+    cost: 80,
     gain: 0,
     target: 'all',
     desc: '消耗70能量，全体队友回复20%攻击力的HP，敌人全体减速30%（持续2回合）',
@@ -396,12 +396,13 @@ export const SKILL_EFFECTS = {
     cost: 50,
     gain: 0,
     target: 'self',
-    desc: '消耗50能量，全队回复20能量，自身与流形每回合回复15%HP(持续5回合) ，流形普攻变为二连击(持续3回合)',
+    desc: '消耗50能量，全队回复20能量，自身与流形每回合回复15%HP(持续5回合)，流形普攻变为二连击(持续3回合)，流形获得嘲讽(持续2回合)',
     effects: [
       { type: 'team_energy', amount: 20 },
       { type: 'owner_buff', buffType: 'healPerTurn', value: 0.15, duration: 5 },
       { type: 'summon_buff', buffType: 'healPerTurn', value: 0.15, duration: 5 },
-      { type: 'summon_buff', buffType: 'doubleAttack', value: true, duration: 3 }
+      { type: 'summon_buff', buffType: 'doubleAttack', value: true, duration: 3 },
+      { type: 'summon_buff', buffType: 'taunt', value: true, duration: 2 }
     ]
   },
   '浅层非熵适应': {

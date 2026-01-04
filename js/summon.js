@@ -119,14 +119,16 @@ export const SummonSystem = {
         spdFlat: 0,         // SPD固定值加成（技能叠加）
         healPerTurn: 0,     // 每回合回血百分比（小数）
         doubleAttack: false, // 二连击
-        stunOnHit: false    // 攻击附带眩晕
+        stunOnHit: false,   // 攻击附带眩晕
+        taunt: false        // 嘲讽（强制敌人AI优先攻击）
       },
       
       // buff持续时间追踪（有持续时间的buff）
       buffDurations: {
         healPerTurn: 0,     // 每回合回血剩余回合数
         doubleAttack: 0,    // 二连击剩余回合数
-        stunOnHit: 0        // 攻击附带眩晕剩余回合数
+        stunOnHit: 0,       // 攻击附带眩晕剩余回合数
+        taunt: 0            // 嘲讽剩余回合数
       },
       
       // 只有普攻
@@ -310,6 +312,10 @@ export const SummonSystem = {
           summon.buffs.stunOnHit = value;
           if (duration > 0) summon.buffDurations.stunOnHit = duration;
           break;
+        case 'taunt':
+          summon.buffs.taunt = value;
+          if (duration > 0) summon.buffDurations.taunt = duration;
+          break;
       }
     });
   },
@@ -398,6 +404,15 @@ export const SummonSystem = {
       if (summon.buffDurations.stunOnHit <= 0) {
         summon.buffs.stunOnHit = false;
         expiredBuffs.push({ buffType: 'stunOnHit', name: '攻击附带眩晕' });
+      }
+    }
+    
+    // 处理taunt（嘲讽）
+    if (summon.buffDurations.taunt > 0) {
+      summon.buffDurations.taunt--;
+      if (summon.buffDurations.taunt <= 0) {
+        summon.buffs.taunt = false;
+        expiredBuffs.push({ buffType: 'taunt', name: '嘲讽' });
       }
     }
     
