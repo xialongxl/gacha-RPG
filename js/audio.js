@@ -20,9 +20,9 @@ export const AudioManager = {
   // 歌单(PLAYLISTS)通过key引用这里的曲目
   // 添加新BGM步骤：1. 在这里添加条目  2. 在歌单中引用
   BGM_LIST: {
-    // BGM 1: 无限流（主界面默认曲）
+    // BGM 1:
     bgm_main1: {
-      name: '无限流',
+      name: '生命流',
       src: 'assets/bgm/m_sys_void_combine.mp3',
       loop: true
     },
@@ -36,15 +36,15 @@ export const AudioManager = {
     src: 'assets/bgm/m_sys_science_combine.mp3',
     loop: true
     },
-    // BGM 2: 龙门战斗曲
+    // BGM 2:
     bgm_battle1: {
-      name: '龙门作战-凌云',
-      src: 'assets/bgm/m_bat_longmenbat_combine.mp3',
-      loop: true
+    name: '龙门作战-凌云',
+    src: 'assets/bgm/m_bat_longmenbat_combine.mp3',
+    loop: true
     },
     bgm_battle2: {
-    name: 'Succession (Short Ver.) (Loop)',
-    src: 'assets/bgm/m_bat_reawaken_loop.mp3',
+    name: 'Succession',
+    src: 'assets/bgm/Succession.wav',
     loop: true
     },
     bgm_battle3: {
@@ -324,6 +324,10 @@ export const BGMPlayer = {
       console.warn('播放列表不存在:', key);
       return;
     }
+    
+    // 方案D：如果切换到同一个歌单，不重置索引
+    const isSamePlaylist = this.currentPlaylistKey === key;
+    
     this.currentPlaylistKey = key;
     // 将tracks数组中的key转换为包含name和key的对象
     const trackKeys = this.PLAYLISTS[key].tracks;
@@ -334,7 +338,12 @@ export const BGMPlayer = {
         key: trackKey
       };
     });
-    this.currentIndex = 0;
+    
+    // 只有切换到不同歌单时才重置索引
+    if (!isSamePlaylist) {
+      this.currentIndex = 0;
+    }
+    
     this.renderPlaylist();
     this.updateUI();
   },
@@ -438,10 +447,10 @@ export const BGMPlayer = {
     const total = bgm.duration() || 0;
     this.setProgress(current, total);
     
-    // 更新播放按钮状态
+    // 更新播放按钮状态（通过class切换背景图）
     const playBtn = document.getElementById('bgm-play-btn');
     if (playBtn) {
-      playBtn.textContent = bgm.playing() ? '⏸️' : '▶️';
+      playBtn.classList.toggle('playing', bgm.playing());
     }
     
     // 更新唱片旋转状态
@@ -565,7 +574,7 @@ export const BGMPlayer = {
     const slider = document.getElementById('bgm-volume-slider');
     
     if (playBtn) {
-      playBtn.textContent = (AudioManager.bgm && AudioManager.bgm.playing()) ? '⏸️' : '▶️';
+      playBtn.classList.toggle('playing', AudioManager.bgm && AudioManager.bgm.playing());
     }
     if (modeBtn && modeText) {
       const m = this.MODES[this.mode];
@@ -669,8 +678,22 @@ export function playBattleBGM() {
 /**
  * 切换到无尽模式BGM
  * 用于：无尽模式
+ * 方案B+D+F：智能续播，同一歌单不重置
  */
 export function playEndlessBGM() {
+  const wasEndless = BGMPlayer.currentPlaylistKey === 'endless';
+  
+  // 方案F：如果已经在endless歌单（继续下一层的情况）
+  if (wasEndless) {
+    // 方案B：如果暂停了，恢复播放
+    if (AudioManager.bgm && !AudioManager.bgm.playing()) {
+      AudioManager.resumeBGM();
+    }
+    // 否则保持当前状态，不做任何操作
+    return;
+  }
+  
+  // 方案F：进入无尽模式（首次或从其他页面回来）
   BGMPlayer.switchPlaylist('endless');
   BGMPlayer.isPlayerMode = true;
   if (BGMPlayer.playlist.length > 0) {

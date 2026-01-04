@@ -41,7 +41,10 @@ const DEFAULT_STATE = {
   endlessCoin: 0,           // 无尽币
   skinTickets: 0,           // 时装券
   ownedSkins: [],           // 已拥有的时装ID列表
-  equippedSkins: {}         // 已装备的时装 { 干员ID: 时装ID }
+  equippedSkins: {},        // 已装备的时装 { 干员ID: 时装ID }
+  // 无尽商店道具
+  reviveTickets: 0,         // 复活券
+  relayTickets: 0           // 接力券
 };
 
 // 当前游戏状态
@@ -132,6 +135,48 @@ class GameStore {
       return true;
     }
     return false;
+  }
+
+  // --- 复活券管理 ---
+  
+  addReviveTickets(amount) {
+    state.reviveTickets = (state.reviveTickets || 0) + amount;
+    this.save();
+    return state.reviveTickets;
+  }
+
+  consumeReviveTicket() {
+    if ((state.reviveTickets || 0) >= 1) {
+      state.reviveTickets -= 1;
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  getReviveTickets() {
+    return state.reviveTickets || 0;
+  }
+
+  // --- 接力券管理 ---
+  
+  addRelayTickets(amount) {
+    state.relayTickets = (state.relayTickets || 0) + amount;
+    this.save();
+    return state.relayTickets;
+  }
+
+  consumeRelayTicket() {
+    if ((state.relayTickets || 0) >= 1) {
+      state.relayTickets -= 1;
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  getRelayTickets() {
+    return state.relayTickets || 0;
   }
 
   // --- 抽卡相关 ---

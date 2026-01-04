@@ -37,9 +37,9 @@
           <span class="bgm-time" id="bgm-time-total">0:00</span>
         </div>
         <div class="bgm-controls">
-          <button class="bgm-btn" onclick="BGMPlayer.prev()" title="上一首">⏮️</button>
-          <button class="bgm-btn bgm-btn-main" id="bgm-play-btn" onclick="BGMPlayer.togglePlay()" title="播放/暂停">▶️</button>
-          <button class="bgm-btn" onclick="BGMPlayer.next()" title="下一首">⏭️</button>
+          <button class="bgm-btn" onclick="BGMPlayer.prev()" title="上一首"><img src="assets/img/Left.svg" width="24" height="24"></button>
+          <button class="bgm-btn bgm-btn-main" id="bgm-play-btn" onclick="BGMPlayer.togglePlay()" title="播放/暂停"></button>
+          <button class="bgm-btn" onclick="BGMPlayer.next()" title="下一首"><img src="assets/img/Right.svg" width="24" height="24"></button>
         </div>
         <div class="bgm-mode">
           <button class="bgm-mode-btn" id="bgm-mode-btn" onclick="BGMPlayer.toggleMode()" title="播放模式">🔁</button>
@@ -71,6 +71,8 @@
       <span>🎫 保底: <b id="pity">0</b>/20</span>
       <span>🎖️ 无尽币: <b id="endless-coin">0</b></span>
       <span>👗 时装券: <b id="skin-tickets">0</b></span>
+      <span>🎟️ 复活券: <b id="revive-tickets">0</b></span>
+      <span>🔗 接力券: <b id="relay-tickets">0</b></span>
     </div>
 
     <!-- 导航 -->
@@ -258,6 +260,8 @@
         <div class="shop-currency">
           <span>🎖️ 无尽币: <b id="shop-endless-coin">0</b></span>
           <span>👗 时装券: <b id="shop-skin-tickets">0</b></span>
+          <span>🎟️ 复活券: <b id="shop-revive-tickets">0</b></span>
+          <span>🔗 接力券: <b id="shop-relay-tickets">0</b></span>
         </div>
         
         <!-- 标签切换 -->
@@ -273,17 +277,20 @@
         
         <!-- 无尽币商店内容 -->
         <div id="shop-coin-shop" class="shop-content">
-          <div class="coin-shop-list">
-            <div class="coin-shop-item">
+          <div class="coin-shop-list" id="coin-shop-list">
+            <!-- 复活券商品（由JS动态插入） -->
+            
+            <!-- 时装券兑换 -->
+            <div class="coin-shop-item" id="coin-exchange-item">
               <div class="coin-shop-icon">👗</div>
               <div class="coin-shop-info">
                 <div class="coin-shop-name">时装券</div>
                 <div class="coin-shop-desc">用于购买干员时装</div>
-                <div class="coin-shop-price">🎖️ 100 无尽币 = 1 时装券</div>
+                <div class="coin-shop-price">🎖️ 1 无尽币 = 1 时装券</div>
               </div>
               <div class="coin-shop-actions">
                 <input type="number" id="coin-exchange-amount" min="1" value="1" class="coin-exchange-input">
-                <button class="btn btn-primary" onclick="ShopSystem.exchangeCoinToTicket()">兑换</button>
+                <button class="btn btn-primary" onclick="ShopSystem.exchangeCoinToTicket()">购买</button>
               </div>
             </div>
           </div>

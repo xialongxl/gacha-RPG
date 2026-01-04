@@ -472,11 +472,15 @@ export function updateResourceUI() {
   document.getElementById('gold').textContent = state.gold;
   document.getElementById('pity').textContent = state.pity;
   
-  // 无尽币和时装券
+  // 无尽币、时装券、复活券、接力券
   const endlessCoinEl = document.getElementById('endless-coin');
   const skinTicketsEl = document.getElementById('skin-tickets');
+  const reviveTicketsEl = document.getElementById('revive-tickets');
+  const relayTicketsEl = document.getElementById('relay-tickets');
   if (endlessCoinEl) endlessCoinEl.textContent = state.endlessCoin || 0;
   if (skinTicketsEl) skinTicketsEl.textContent = state.skinTickets || 0;
+  if (reviveTicketsEl) reviveTicketsEl.textContent = state.reviveTickets || 0;
+  if (relayTicketsEl) relayTicketsEl.textContent = state.relayTickets || 0;
 }
 
 // 页面切换

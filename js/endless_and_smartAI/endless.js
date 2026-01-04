@@ -19,6 +19,7 @@ export const EndlessMode = {
   active: false,
   currentFloor: 0,
   maxFloorReached: 0,
+  relayFloor: null,  // 接力记录的层数
   currentStage: null,
   totalRewards: { gold: 0, tickets: 0 },  // 累计奖励
   currentBuffs: [],  // 当局获得的强化buff
@@ -75,10 +76,12 @@ export const EndlessMode = {
       const saved = await GameDB.settings.get('endless_progress');
       if (saved && saved.value) {
         this.maxFloorReached = saved.value.maxFloorReached || 0;
+        this.relayFloor = saved.value.relayFloor || null;  // 读取接力层数
       }
     } catch (e) {
       console.error('读取无尽模式进度失败:', e);
       this.maxFloorReached = 0;
+      this.relayFloor = null;
     }
   },
   
@@ -88,7 +91,8 @@ export const EndlessMode = {
       await GameDB.settings.put({
         id: 'endless_progress',
         value: {
-          maxFloorReached: this.maxFloorReached
+          maxFloorReached: this.maxFloorReached,
+          relayFloor: this.relayFloor  // 保存接力层数
         }
       });
     } catch (e) {
@@ -105,19 +109,127 @@ export const EndlessMode = {
       return;
     }
     
+    // 检查是否有接力记录
+    if (this.relayFloor && this.relayFloor > 0) {
+      this.showRelayConfirmModal();
+      return;
+    }
+    
+    // 正常开始
+    this.beginEndlessMode(0);
+  },
+  
+  // 开始无尽模式（支持指定起始层）
+  beginEndlessMode(startFloor = 0) {
     this.active = true;
-    this.currentFloor = 0;
+    this.currentFloor = startFloor;
     this.totalRewards = { gold: 0, tickets: 0 };  // 重置累计奖励
     this.currentBuffs = [];  // 重置强化buff
     
     // 开始记录战斗数据（给SmartAI）
+    const team = state.team.filter(c => c !== null);
     if (typeof SmartAI !== 'undefined') {
       const teamData = team.map(name => ({ name, ...CHARACTER_DATA[name] }));
-      await SmartAI.startBattleRecord(teamData);
+      SmartAI.startBattleRecord(teamData);
     }
     
-    // 进入第一层
+    // 进入下一层
     this.nextFloor();
+  },
+  
+  // 显示接力确认弹窗
+  showRelayConfirmModal() {
+    const relayCount = store.getRelayTickets();
+    
+    const content = `
+      <div class="relay-confirm">
+        <p style="font-size:18px;">🔗 检测到接力记录！</p>
+        <div class="relay-info" style="margin:15px 0;padding:10px;background:rgba(255,255,255,0.1);border-radius:8px;">
+          <p>上次撤退层数: 第 <b style="color:#ffd700;">${this.relayFloor}</b> 层</p>
+          <p>可从第 <b style="color:#90ee90;">${this.relayFloor + 1}</b> 层继续挑战</p>
+        </div>
+        <hr style="border-color:rgba(255,255,255,0.2);margin:15px 0;">
+        <p>🎫 接力券: <b style="color:#ffd700;">${relayCount}</b> 张</p>
+        <p style="color:#90ee90;font-size:13px;">使用接力将消耗 1 张接力券</p>
+        <div class="endless-buttons" style="margin-top:20px;">
+          <button id="relay-use" class="btn-primary">使用接力券（消耗1张）</button>
+          <button id="relay-skip" class="btn-secondary">从第1层开始</button>
+          <button id="relay-cancel" class="btn-secondary">取消</button>
+        </div>
+      </div>
+    `;
+    
+    showModal('🔗 接力确认', content, false);
+    
+    setTimeout(() => {
+      document.getElementById('relay-use')?.addEventListener('click', async () => {
+        // 消耗接力券
+        const success = await store.consumeRelayTicket();
+        if (!success) {
+          alert('接力券不足！');
+          return;
+        }
+        
+        const startFloor = this.relayFloor;
+        
+        // 清除接力记录
+        this.relayFloor = null;
+        await this.saveProgress();
+        
+        closeModal();
+        
+        addBattleLog(`🔗 使用接力！从第 ${startFloor + 1} 层开始！`, 'system');
+        this.beginEndlessMode(startFloor);
+      });
+      
+      document.getElementById('relay-skip')?.addEventListener('click', () => {
+        // 不使用接力，显示清除确认弹窗
+        closeModal();
+        this.showClearRelayConfirmModal();
+      });
+      
+      document.getElementById('relay-cancel')?.addEventListener('click', () => {
+        closeModal();
+      });
+    }, 100);
+  },
+  
+  // 显示清除接力记录确认弹窗
+  showClearRelayConfirmModal() {
+    const content = `
+      <div class="clear-relay-confirm">
+        <p style="font-size:18px;color:#ff6b6b;">⚠️ 确定要清除接力记录吗？</p>
+        <div class="relay-info" style="margin:15px 0;padding:10px;background:rgba(255,255,255,0.1);border-radius:8px;">
+          <p>当前记录: 第 <b style="color:#ffd700;">${this.relayFloor}</b> 层</p>
+          <p style="color:#888;font-size:12px;">清除后将无法恢复</p>
+        </div>
+        <div class="endless-buttons" style="margin-top:20px;">
+          <button id="clear-confirm" class="btn-danger">确认清除并开始</button>
+          <button id="clear-cancel" class="btn-secondary">返回</button>
+        </div>
+      </div>
+    `;
+    
+    showModal('🗑️ 清除确认', content, false);
+    
+    setTimeout(() => {
+      document.getElementById('clear-confirm')?.addEventListener('click', async () => {
+        // 清除接力记录
+        this.relayFloor = null;
+        await this.saveProgress();
+        
+        closeModal();
+        
+        // 从第1层开始
+        this.beginEndlessMode(0);
+      });
+      
+      document.getElementById('clear-cancel')?.addEventListener('click', () => {
+        closeModal();
+        // 返回接力确认弹窗
+        this.showRelayConfirmModal();
+      });
+    }, 100);
   },
   
   // ==================== 下一层 ====================
@@ -455,10 +567,34 @@ export const EndlessMode = {
       const defBonus = this.getStatBonus('def');
       const spdBonus = this.getStatBonus('spd');
       
+      // 调试日志：显示强化应用情况
+      if (hpBonus.bonusPercent > 0 || atkBonus.bonusPercent > 0 || defBonus.bonusPercent > 0 || spdBonus.bonus > 0) {
+        console.log(`🎁 Roguelike强化应用到 ${name}:`, {
+          hp: `+${Math.round(hpBonus.bonusPercent * 100)}%`,
+          atk: `+${Math.round(atkBonus.bonusPercent * 100)}%`,
+          def: `+${Math.round(defBonus.bonusPercent * 100)}%`,
+          spd: `+${spdBonus.bonus}`
+        });
+      }
+      
       baseHp = Math.floor(baseHp * (1 + hpBonus.bonusPercent));
       baseAtk = Math.floor(baseAtk * (1 + atkBonus.bonusPercent));
       baseDef = Math.floor(baseDef * (1 + defBonus.bonusPercent));
       baseSpd = baseSpd + spdBonus.bonus;
+      
+      // 获取特殊效果加成
+      const critBonus = this.getSpecialBonus('crit');
+      const vampBonus = this.getSpecialBonus('vamp');
+      const hasExtraLife = this.hasSpecialEffect('extraLife');
+      
+      // 调试日志：显示特殊效果
+      if (critBonus > 0 || vampBonus > 0 || hasExtraLife) {
+        console.log(`🎁 Roguelike特殊效果应用到 ${name}:`, {
+          crit: `${Math.round(critBonus * 100)}%`,
+          vamp: `${Math.round(vampBonus * 100)}%`,
+          extraLife: hasExtraLife
+        });
+      }
       
       return {
         id: `ally_${name}_${Date.now()}_${index}`,
@@ -471,7 +607,7 @@ export const EndlessMode = {
         skills: [...data.skills],
         currentHp: baseHp,
         maxHp: baseHp,
-        energy: 0,
+        energy: this.getInitialEnergy(),  // 应用Roguelike能量强化
         maxEnergy: 100,
         buffAtk: 0,
         buffAtkPercent: 0,
@@ -483,9 +619,9 @@ export const EndlessMode = {
         isSummon: false,
         unitId: `ally-${name}-${Date.now()}-${index}`,
         // Roguelike特殊效果
-        critBonus: this.getSpecialBonus('crit'),
-        vampBonus: this.getSpecialBonus('vamp'),
-        hasExtraLife: this.hasSpecialEffect('extraLife')
+        critBonus: critBonus,
+        vampBonus: vampBonus,
+        hasExtraLife: hasExtraLife
       };
     });
     
@@ -568,11 +704,18 @@ export const EndlessMode = {
     
     const div = document.createElement('div');
     div.id = 'endless-floor-display';
+    
+    // 构建强化buff显示
+    const buffsDisplay = this.getBuffsDisplay();
+    const buffsHtml = buffsDisplay !== '无' ?
+      `<span class="floor-buffs" title="${this.getBuffsTooltip()}">🎁${buffsDisplay}</span>` : '';
+    
     div.innerHTML = `
       <div class="endless-floor-info">
         <span class="floor-number">第 ${this.currentFloor} 层</span>
         <span class="floor-record">最高: ${this.maxFloorReached}</span>
-        ${battle.useSmartAI ? '<span class="ai-badge">🧠 AI</span>' : ''}
+        ${battle.useSmartAI ? '<span class="ai-badge">🧠 SmartAI</span>' : ''}
+        ${buffsHtml}
         <span class="floor-rewards">💰${this.totalRewards.gold} 🎫${this.totalRewards.tickets}</span>
       </div>
     `;
@@ -752,7 +895,13 @@ export const EndlessMode = {
   // 获取当前buff显示
   getBuffsDisplay() {
     if (this.currentBuffs.length === 0) return '无';
-    return this.currentBuffs.map(b => b.icon).join(' ');
+    return this.currentBuffs.map(b => b.icon).join('');
+  },
+  
+  // 获取buff详细提示
+  getBuffsTooltip() {
+    if (this.currentBuffs.length === 0) return '';
+    return this.currentBuffs.map(b => `${b.icon} ${b.name}: ${b.desc}`).join('\n');
   },
   
   // 获取属性加成（供战斗使用）
@@ -791,11 +940,124 @@ export const EndlessMode = {
     return this.currentBuffs.some(buff => buff.type === 'special' && buff.effect === effect);
   },
   
+  // 获取初始能量（包含Roguelike能量强化）
+  getInitialEnergy() {
+    let energy = 0;
+    this.currentBuffs.forEach(buff => {
+      if (buff.type === 'instant' && buff.effect === 'energy') {
+        energy += buff.value || 0;
+      }
+    });
+    console.log(`🎁 初始能量: ${energy}（来自能量强化）`);
+    return Math.min(100, energy);
+  },
+  
   // 失败
   async onDefeat() {
     if (!this.active) return;
     
+    // 检查是否有复活券
+    const reviveCount = store.getReviveTickets();
+    if (reviveCount > 0) {
+      this.showReviveConfirmModal();
+      return;
+    }
+    
     await this.end(false);
+  },
+  
+  // 显示复活券使用提示弹窗（第一步：询问是否使用）
+  showReviveConfirmModal() {
+    const reviveCount = store.getReviveTickets();
+    
+    const content = `
+      <div class="revive-confirm">
+        <p style="font-size:18px;color:#ff6b6b;">💀 队伍全灭！</p>
+        <div class="revive-info">
+          <p>当前层数: 第 <b>${this.currentFloor}</b> 层</p>
+          <p>累计奖励: 💰${this.totalRewards.gold} 🎫${this.totalRewards.tickets}</p>
+        </div>
+        <hr>
+        <div class="revive-option">
+          <p style="font-size:16px;color:#90ee90;">🎟️ 你有 <b>${reviveCount}</b> 张复活券</p>
+          <p>使用复活券可以:</p>
+          <ul style="text-align:left;margin:10px 0;padding-left:20px;">
+            <li>重新挑战当前层</li>
+            <li>全队满血满状态</li>
+            <li>保留累计奖励</li>
+          </ul>
+        </div>
+        <div class="endless-buttons" style="margin-top:20px;">
+          <button id="revive-use" class="btn-primary">使用复活券</button>
+          <button id="revive-decline" class="btn-danger">放弃挑战</button>
+        </div>
+      </div>
+    `;
+    
+    showModal('🎟️ 复活机会', content, false);
+    
+    setTimeout(() => {
+      document.getElementById('revive-use')?.addEventListener('click', () => {
+        closeModal();
+        // 进入二次确认
+        this.showReviveConfirm2Modal();
+      });
+      document.getElementById('revive-decline')?.addEventListener('click', async () => {
+        closeModal();
+        await this.end(false);
+      });
+    }, 100);
+  },
+  
+  // 显示复活券使用二次确认弹窗（第二步：确认使用）
+  showReviveConfirm2Modal() {
+    const reviveCount = store.getReviveTickets();
+    
+    const content = `
+      <div class="revive-confirm">
+        <p style="font-size:18px;color:#ffd700;">⚠️ 确定要使用复活券吗？</p>
+        <div class="revive-info">
+          <p>使用后将消耗 <b>1</b> 张复活券</p>
+          <p>剩余复活券: <b>${reviveCount - 1}</b> 张</p>
+        </div>
+        <hr>
+        <p style="color:#90ee90;">重新挑战第 <b>${this.currentFloor}</b> 层</p>
+        <div class="endless-buttons" style="margin-top:20px;">
+          <button id="revive-confirm" class="btn-primary">确认使用</button>
+          <button id="revive-cancel" class="btn-secondary">取消</button>
+        </div>
+      </div>
+    `;
+    
+    showModal('🎟️ 确认使用', content, false);
+    
+    setTimeout(() => {
+      document.getElementById('revive-confirm')?.addEventListener('click', async () => {
+        closeModal();
+        await this.useReviveTicket();
+      });
+      document.getElementById('revive-cancel')?.addEventListener('click', () => {
+        closeModal();
+        // 返回第一个弹窗
+        this.showReviveConfirmModal();
+      });
+    }, 100);
+  },
+  
+  // 使用复活券（重新挑战当前层）
+  async useReviveTicket() {
+    // 消耗复活券
+    const success = await store.consumeReviveTicket();
+    if (!success) {
+      addBattleLog('❌ 复活券使用失败！', 'system');
+      await this.end(false);
+      return;
+    }
+    
+    addBattleLog(`🎟️ 使用复活券！重新挑战第 ${this.currentFloor} 层！`, 'system');
+    
+    // 重新开始当前层战斗（重新生成敌人，全队满血满状态）
+    this.startBattle(this.currentStage);
   },
   
   // 结束无尽模式
@@ -813,12 +1075,22 @@ export const EndlessMode = {
     // 计算无尽币
     let endlessCoinEarned = 0;
     if (victory) {
-      // 撤退时获得无尽币
+      // 检查是否是局内撤退（战斗中撤退，当前层未通关）
+      const isFleeInBattle = this._fleeInBattle === true;
+      this._fleeInBattle = false;  // 重置标志
+      
+      // 局内撤退：按已通关层数计算（currentFloor - 1）
+      // 通关后撤退：按当前层数计算
+      const completedFloor = isFleeInBattle ? (this.currentFloor - 1) : this.currentFloor;
+      
       const coinConfig = CONFIG.ENDLESS_COIN || { BASE_RATE: 2, BOSS_BONUS: 10 };
-      const baseCoins = this.currentFloor * coinConfig.BASE_RATE;
-      const bossCount = Math.floor(this.currentFloor / this.config.BOSS_INTERVAL);
+      const baseCoins = completedFloor * coinConfig.BASE_RATE;
+      const bossCount = Math.floor(completedFloor / this.config.BOSS_INTERVAL);
       const bossBonus = bossCount * coinConfig.BOSS_BONUS;
-      endlessCoinEarned = baseCoins + bossBonus;
+      endlessCoinEarned = Math.max(0, baseCoins + bossBonus);
+      
+      // 保存撤退类型供结算弹窗使用
+      this._wasFleeInBattle = isFleeInBattle;
     }
     
     // 只有撤退才发放奖励，失败则清空
@@ -873,9 +1145,80 @@ export const EndlessMode = {
         closeModal();
         this.nextFloor();
       });
-      document.getElementById('endless-stop')?.addEventListener('click', async () => {
+      document.getElementById('endless-stop')?.addEventListener('click', () => {
+        // 二次确认撤退
+        this.showRetreatConfirmModal();
+      });
+    }, 100);
+  },
+  
+  // 显示撤退二次确认弹窗（支持接力券记录层数）
+  showRetreatConfirmModal() {
+    // 计算预计获得的无尽币
+    const coinConfig = CONFIG.ENDLESS_COIN || { BASE_RATE: 2, BOSS_BONUS: 10 };
+    const baseCoins = this.currentFloor * coinConfig.BASE_RATE;
+    const bossCount = Math.floor(this.currentFloor / this.config.BOSS_INTERVAL);
+    const bossBonus = bossCount * coinConfig.BOSS_BONUS;
+    const estimatedEndlessCoin = baseCoins + bossBonus;
+    
+    // 检查是否有接力券，有则显示记录选项
+    const relayCount = store.getRelayTickets();
+    let relaySection = '';
+    if (relayCount > 0) {
+      relaySection = `
+        <div class="relay-section" style="margin:15px 0;padding:12px;background:rgba(100,200,100,0.15);border-radius:8px;border:1px solid rgba(100,200,100,0.3);">
+          <p style="margin-bottom:8px;">🔗 你有 <b style="color:#ffd700;">${relayCount}</b> 张接力券</p>
+          <p style="font-size:13px;color:#90ee90;">记录层数后，下次可从第 <b>${this.currentFloor + 1}</b> 层继续</p>
+          <p style="font-size:11px;color:#888;">（使用接力时消耗接力券，记录不消耗）</p>
+          <label class="relay-checkbox-label" style="display:flex;align-items:center;margin-top:10px;cursor:pointer;">
+            <input type="checkbox" id="record-relay-checkbox" style="margin-right:8px;width:18px;height:18px;">
+            <span>记录当前层数</span>
+          </label>
+        </div>
+      `;
+    }
+    
+    const content = `
+      <div class="retreat-confirm">
+        <p style="font-size:18px;color:#ff6b6b;">⚠️ 确定要撤退吗？</p>
+        <div class="retreat-info">
+          <p>当前层数: 第 <b>${this.currentFloor}</b> 层</p>
+          <p>撤退后将获得以下奖励:</p>
+          <div class="retreat-rewards">
+            <p>💰 金币: ${this.totalRewards.gold}</p>
+            <p>🎫 抽卡券: ${this.totalRewards.tickets}</p>
+            <p>🎖️ 无尽币: ${estimatedEndlessCoin}</p>
+          </div>
+        </div>
+        <hr style="border-color:rgba(255,255,255,0.2);margin:15px 0;">
+        ${relaySection}
+        <div class="endless-buttons" style="margin-top:20px;">
+          <button id="retreat-confirm" class="btn-danger">确认撤退</button>
+          <button id="retreat-cancel" class="btn-secondary">继续挑战</button>
+        </div>
+      </div>
+    `;
+    
+    showModal('🚪 撤退确认', content, false);
+    
+    setTimeout(() => {
+      document.getElementById('retreat-confirm')?.addEventListener('click', async () => {
+        // 检查是否勾选了记录层数
+        const recordCheckbox = document.getElementById('record-relay-checkbox');
+        if (recordCheckbox && recordCheckbox.checked) {
+          // 记录层数（不消耗接力券）
+          this.relayFloor = this.currentFloor;
+          await this.saveProgress();
+          addBattleLog(`🔗 已记录接力层数: 第 ${this.currentFloor} 层`, 'system');
+        }
         closeModal();
         await this.end(true);
+      });
+      document.getElementById('retreat-cancel')?.addEventListener('click', () => {
+        closeModal();
+        // 重新显示胜利弹窗
+        const rewards = this.currentStage.rewards;
+        this.showVictoryModal(rewards);
       });
     }, 100);
   },

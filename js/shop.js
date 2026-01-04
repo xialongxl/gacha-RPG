@@ -14,6 +14,7 @@ export const ShopSystem = {
     console.log('🛍️ 商店系统初始化...');
     this.bindTabEvents();
     this.renderSkinShop();
+    this.renderEndlessShop();
     this.updateCurrency();
     console.log('✅ 商店系统初始化完成');
   },
@@ -41,6 +42,8 @@ export const ShopSystem = {
     // 更新商店页面的货币显示
     const endlessCoinEl = document.getElementById('shop-endless-coin');
     const skinTicketsEl = document.getElementById('shop-skin-tickets');
+    const reviveTicketsEl = document.getElementById('shop-revive-tickets');
+    const relayTicketsEl = document.getElementById('shop-relay-tickets');
     
     if (endlessCoinEl) {
       endlessCoinEl.textContent = state.endlessCoin || 0;
@@ -48,16 +51,30 @@ export const ShopSystem = {
     if (skinTicketsEl) {
       skinTicketsEl.textContent = state.skinTickets || 0;
     }
+    if (reviveTicketsEl) {
+      reviveTicketsEl.textContent = state.reviveTickets || 0;
+    }
+    if (relayTicketsEl) {
+      relayTicketsEl.textContent = state.relayTickets || 0;
+    }
     
     // 同时更新顶部资源栏
     const topEndlessCoin = document.getElementById('endless-coin');
     const topSkinTickets = document.getElementById('skin-tickets');
+    const topReviveTickets = document.getElementById('revive-tickets');
+    const topRelayTickets = document.getElementById('relay-tickets');
     
     if (topEndlessCoin) {
       topEndlessCoin.textContent = state.endlessCoin || 0;
     }
     if (topSkinTickets) {
       topSkinTickets.textContent = state.skinTickets || 0;
+    }
+    if (topReviveTickets) {
+      topReviveTickets.textContent = state.reviveTickets || 0;
+    }
+    if (topRelayTickets) {
+      topRelayTickets.textContent = state.relayTickets || 0;
     }
   },
   
@@ -164,7 +181,152 @@ export const ShopSystem = {
     }
   },
   
-  // ==================== 无尽币商店（只卖时装券） ====================
+  // ==================== 无尽币商店 ====================
+  
+  // 渲染无尽商店（复活券、接力券）
+  renderEndlessShop() {
+    const container = document.getElementById('coin-shop-list');
+    if (!container) return;
+    
+    // ==================== 复活券商品 ====================
+    const reviveConfig = CONFIG.ENDLESS_SHOP?.REVIVE_TICKET;
+    if (reviveConfig) {
+      // 移除旧的复活券商品（如果存在）
+      const oldReviveItem = document.getElementById('revive-ticket-item');
+      if (oldReviveItem) oldReviveItem.remove();
+      
+      // 创建复活券商品元素
+      const reviveItem = document.createElement('div');
+      reviveItem.className = 'coin-shop-item';
+      reviveItem.id = 'revive-ticket-item';
+      reviveItem.innerHTML = `
+        <div class="coin-shop-icon">${reviveConfig.icon}</div>
+        <div class="coin-shop-info">
+          <div class="coin-shop-name">${reviveConfig.name}</div>
+          <div class="coin-shop-desc">${reviveConfig.desc}</div>
+          <div class="coin-shop-price">🎖️ ${reviveConfig.price} 无尽币 = 1 复活券</div>
+        </div>
+        <div class="coin-shop-actions">
+          <input type="number" id="revive-buy-amount" min="1" value="1" class="coin-exchange-input">
+          <button class="btn btn-primary" onclick="window.ShopSystem.buyReviveTicket()">购买</button>
+        </div>
+      `;
+      
+      // 插入到列表最前面
+      container.insertBefore(reviveItem, container.firstChild);
+    }
+    
+    // ==================== 接力券商品 ====================
+    const relayConfig = CONFIG.ENDLESS_SHOP?.RELAY_TICKET;
+    if (relayConfig) {
+      // 移除旧的接力券商品（如果存在）
+      const oldRelayItem = document.getElementById('relay-ticket-item');
+      if (oldRelayItem) oldRelayItem.remove();
+      
+      // 创建接力券商品元素
+      const relayItem = document.createElement('div');
+      relayItem.className = 'coin-shop-item';
+      relayItem.id = 'relay-ticket-item';
+      relayItem.innerHTML = `
+        <div class="coin-shop-icon">${relayConfig.icon}</div>
+        <div class="coin-shop-info">
+          <div class="coin-shop-name">${relayConfig.name}</div>
+          <div class="coin-shop-desc">${relayConfig.desc}</div>
+          <div class="coin-shop-price">🎖️ ${relayConfig.price} 无尽币 = 1 接力券</div>
+        </div>
+        <div class="coin-shop-actions">
+          <input type="number" id="relay-buy-amount" min="1" value="1" class="coin-exchange-input">
+          <button class="btn btn-primary" onclick="window.ShopSystem.buyRelayTicket()">购买</button>
+        </div>
+      `;
+      
+      // 插入到复活券后面（如果有的话）
+      const reviveItem = document.getElementById('revive-ticket-item');
+      if (reviveItem && reviveItem.nextSibling) {
+        container.insertBefore(relayItem, reviveItem.nextSibling);
+      } else if (reviveItem) {
+        container.appendChild(relayItem);
+      } else {
+        container.insertBefore(relayItem, container.firstChild);
+      }
+    }
+  },
+  
+  // 购买复活券
+  buyReviveTicket() {
+    const reviveConfig = CONFIG.ENDLESS_SHOP?.REVIVE_TICKET;
+    if (!reviveConfig) {
+      alert('商品配置错误');
+      return;
+    }
+    
+    // 获取购买数量
+    const input = document.getElementById('revive-buy-amount');
+    const amount = parseInt(input?.value) || 0;
+    
+    if (amount <= 0) {
+      alert('请输入有效数量');
+      return;
+    }
+    
+    const totalPrice = reviveConfig.price * amount;
+    
+    if ((state.endlessCoin || 0) < totalPrice) {
+      alert(`无尽币不足！需要 ${totalPrice}，当前 ${state.endlessCoin || 0}`);
+      return;
+    }
+    
+    // 扣除无尽币
+    store.consumeEndlessCoin(totalPrice);
+    
+    // 增加复活券
+    store.addReviveTickets(amount);
+    
+    // 更新界面
+    this.updateCurrency();
+    this.renderEndlessShop();
+    updateResourceUI();
+    
+    alert(`成功购买 ${amount} 张${reviveConfig.name}！`);
+  },
+  
+  // 购买接力券
+  buyRelayTicket() {
+    const relayConfig = CONFIG.ENDLESS_SHOP?.RELAY_TICKET;
+    if (!relayConfig) {
+      alert('商品配置错误');
+      return;
+    }
+    
+    // 获取购买数量
+    const input = document.getElementById('relay-buy-amount');
+    const amount = parseInt(input?.value) || 0;
+    
+    if (amount <= 0) {
+      alert('请输入有效数量');
+      return;
+    }
+    
+    const totalPrice = relayConfig.price * amount;
+    
+    if ((state.endlessCoin || 0) < totalPrice) {
+      alert(`无尽币不足！需要 ${totalPrice}，当前 ${state.endlessCoin || 0}`);
+      return;
+    }
+    
+    // 扣除无尽币
+    store.consumeEndlessCoin(totalPrice);
+    
+    // 增加接力券
+    store.addRelayTickets(amount);
+    
+    // 更新界面
+    this.updateCurrency();
+    this.renderEndlessShop();
+    updateResourceUI();
+    
+    alert(`成功购买 ${amount} 张${relayConfig.name}！`);
+  },
   
   // 无尽币兑换时装券
   exchangeCoinToTicket() {
@@ -177,7 +339,7 @@ export const ShopSystem = {
     }
     
     // 获取兑换比例
-    const rate = CONFIG.ENDLESS_COIN?.EXCHANGE?.COIN_TO_TICKET || 100;
+    const rate = CONFIG.ENDLESS_COIN?.EXCHANGE?.COIN_TO_TICKET || 10;
     const coinNeeded = amount * rate;
     
     // 检查无尽币是否足够
@@ -198,7 +360,7 @@ export const ShopSystem = {
     
     updateResourceUI();
     
-    alert(`成功兑换 ${amount} 张时装券！`);
+    alert(`成功购买 ${amount} 张时装券！`);
   }
 };
 

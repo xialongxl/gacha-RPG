@@ -224,7 +224,23 @@ export const CONFIG = {
     BOSS_BONUS: 10,         // 击败BOSS额外+10
     // 兑换比例
     EXCHANGE: {
-      COIN_TO_TICKET: 100   // 100无尽币 = 1时装券
+      COIN_TO_TICKET: 1   // 1无尽币 = 1时装券
+    }
+  },
+
+  // ==================== 无尽币商店道具配置 ====================
+  ENDLESS_SHOP: {
+    REVIVE_TICKET: {
+      name: '复活券',
+      icon: '🎟️',
+      desc: '无尽模式全军覆没时可使用，复活全队继续挑战',
+      price: 1000
+    },
+    RELAY_TICKET: {
+      name: '接力券',
+      icon: '🔗',
+      desc: '战斗胜利后撤退时可记录层数，下次从该层继续',
+      price: 800
     }
   },
 

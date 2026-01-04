@@ -628,14 +628,74 @@ export function clearUnitSelection() {
 
 // 撤退
 export function fleeBattle() {
-  battle.active = false;
-  
-  // 无尽模式撤退走专门的逻辑
+  // 无尽模式撤退需要二次确认
   if (battle.isEndless && typeof EndlessMode !== 'undefined') {
-    addBattleLog('撤退了...', 'system');
-    EndlessMode.end(true);  // true表示主动撤退，可以获得奖励
+    showFleeConfirmModal();
     return;
   }
+  
+  // 普通战斗直接撤退
+  doFlee();
+}
+
+// 显示局内撤退确认弹窗（无尽模式专用）
+function showFleeConfirmModal() {
+  // 局内撤退不获得当前层的无尽币
+  const coinConfig = CONFIG.ENDLESS_COIN || { BASE_RATE: 2, BOSS_BONUS: 10 };
+  const completedFloor = EndlessMode.currentFloor - 1;  // 只计算已通关的层数
+  const baseCoins = completedFloor * coinConfig.BASE_RATE;
+  const bossCount = Math.floor(completedFloor / EndlessMode.config.BOSS_INTERVAL);
+  const bossBonus = bossCount * coinConfig.BOSS_BONUS;
+  const estimatedEndlessCoin = Math.max(0, baseCoins + bossBonus);
+  
+  const content = `
+    <div class="flee-confirm">
+      <p style="font-size:18px;color:#ff6b6b;">⚠️ 确定要在战斗中撤退吗？</p>
+      <p style="color:#ffcc00;font-size:14px;">当前层尚未通关，无法获得本层奖励！</p>
+      <div class="flee-info">
+        <p>当前层数: 第 <b>${EndlessMode.currentFloor}</b> 层（未通关）</p>
+        <p>已通关层数: <b>${completedFloor}</b> 层</p>
+        <p style="margin-top:10px;">撤退后将获得以下奖励:</p>
+        <div class="flee-rewards">
+          <p>💰 金币: ${EndlessMode.totalRewards.gold}</p>
+          <p>🎫 抽卡券: ${EndlessMode.totalRewards.tickets}</p>
+          <p>🎖️ 无尽币: ${estimatedEndlessCoin} <span style="color:#888;font-size:12px;">(不含当前层)</span></p>
+        </div>
+      </div>
+      <div class="endless-buttons" style="margin-top:20px;">
+        <button id="flee-confirm" class="btn-danger">确认撤退</button>
+        <button id="flee-cancel" class="btn-secondary">继续战斗</button>
+      </div>
+    </div>
+  `;
+  
+  showModal('🚪 撤退确认', content, false);
+  
+  setTimeout(() => {
+    document.getElementById('flee-confirm')?.addEventListener('click', () => {
+      closeModal();
+      doFleeEndless();
+    });
+    document.getElementById('flee-cancel')?.addEventListener('click', () => {
+      closeModal();
+      // 返回战斗，不做任何操作
+    });
+  }, 100);
+}
+
+// 执行无尽模式局内撤退（不获得当前层奖励）
+function doFleeEndless() {
+  battle.active = false;
+  addBattleLog('撤退了...', 'system');
+  
+  // 局内撤退，标记不获得当前层的无尽币
+  EndlessMode._fleeInBattle = true;
+  EndlessMode.end(true);  // true表示主动撤退，可以获得奖励（但无尽币按已通关层数计算）
+}
+
+// 执行普通撤退
+function doFlee() {
+  battle.active = false;
   
   // 普通战斗撤退，切换回主界面BGM（使用歌单）
   playMainBGM();
