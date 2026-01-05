@@ -96,6 +96,240 @@ function destroySingleSpineInstance(id) {
   spineInstances.delete(id);
 }
 
+// 智能获取 Spine Bounds（激进多帧采样方案）
+function getReliableSpineBounds(spineAnim, containerWidth, containerHeight) {
+  // 强制更新骨骼变换
+  try {
+    spineAnim.skeleton.updateWorldTransform();
+    spineAnim.update(0);
+  } catch (e) {}
+  
+  // 第一次尝试：直接获取 getLocalBounds
+  let bounds = null;
+  try {
+    const pixiBounds = spineAnim.getLocalBounds();
+    bounds = {
+      x: pixiBounds.x,
+      y: pixiBounds.y,
+      width: pixiBounds.width,
+      height: pixiBounds.height
+    };
+  } catch (e) {}
+  
+  // 检查边界是否异常
+  const isAbnormal = !bounds ||
+    !isFinite(bounds.width) || !isFinite(bounds.height) ||
+    bounds.width <= 0 || bounds.height <= 0 ||
+    bounds.width < 30 || bounds.height < 30 ||   // 尺寸太小
+    bounds.width > 3000 || bounds.height > 3000; // 尺寸太大
+  
+  if (isAbnormal) {
+    console.warn('初始边界异常，启动多帧采样:', bounds);
+    bounds = multiFrameSampling(spineAnim, containerWidth, containerHeight);
+  }
+  
+  // 如果还是没有有效边界，使用智能估算
+  if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
+    console.warn('多帧采样失败，使用智能估算');
+    bounds = smartEstimateBounds(spineAnim, containerWidth, containerHeight);
+  }
+  
+  console.log('最终边界:', bounds);
+  return bounds;
+}
+
+// 多帧采样：模拟动画播放多帧，收集所有边界数据
+function multiFrameSampling(spineAnim, containerWidth, containerHeight) {
+  const allBounds = [];
+  const sampleFrames = 10; // 采样10帧
+  const frameTime = 0.033; // 每帧约33ms（30fps）
+  
+  try {
+    // 确保有动画在播放
+    if (spineAnim.state && spineAnim.state.tracks[0]) {
+      // 采样多帧
+      for (let i = 0; i < sampleFrames; i++) {
+        spineAnim.update(frameTime);
+        spineAnim.skeleton.updateWorldTransform();
+        
+        try {
+          const frameBounds = spineAnim.getLocalBounds();
+          if (isFinite(frameBounds.width) && isFinite(frameBounds.height) &&
+              frameBounds.width > 0 && frameBounds.height > 0) {
+            allBounds.push({
+              x: frameBounds.x,
+              y: frameBounds.y,
+              width: frameBounds.width,
+              height: frameBounds.height
+            });
+          }
+        } catch (e) {}
+      }
+    }
+  } catch (e) {
+    console.warn('多帧采样过程出错:', e);
+  }
+  
+  if (allBounds.length === 0) {
+    return null;
+  }
+  
+  // 计算所有采样帧的包围盒（取最大范围）
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  
+  for (const b of allBounds) {
+    minX = Math.min(minX, b.x);
+    minY = Math.min(minY, b.y);
+    maxX = Math.max(maxX, b.x + b.width);
+    maxY = Math.max(maxY, b.y + b.height);
+  }
+  
+  const mergedBounds = {
+    x: minX,
+    y: minY,
+    width: maxX - minX,
+    height: maxY - minY
+  };
+  
+  console.log(`多帧采样完成，采样${allBounds.length}帧:`, mergedBounds);
+  return mergedBounds;
+}
+
+// 智能估算边界：基于骨骼数据和容器尺寸
+function smartEstimateBounds(spineAnim, containerWidth, containerHeight) {
+  // 尝试从skeleton.data获取默认尺寸
+  try {
+    const skeleton = spineAnim.skeleton;
+    if (skeleton && skeleton.data) {
+      const data = skeleton.data;
+      // 检查是否有有效的默认尺寸
+      if (data.width > 0 && data.height > 0) {
+        return {
+          x: -data.width / 2,
+          y: -data.height,
+          width: data.width,
+          height: data.height
+        };
+      }
+      
+      // 尝试从bones计算大致尺寸
+      const bones = data.bones;
+      if (bones && bones.length > 0) {
+        let maxY = 0;
+        let maxX = 0;
+        for (const bone of bones) {
+          if (bone.y !== undefined) maxY = Math.max(maxY, Math.abs(bone.y));
+          if (bone.x !== undefined) maxX = Math.max(maxX, Math.abs(bone.x));
+        }
+        if (maxY > 0) {
+          const estimatedHeight = maxY * 2.5; // 估算：骨骼最大Y坐标的2.5倍
+          const estimatedWidth = Math.max(maxX * 2.5, estimatedHeight * 0.6);
+          return {
+            x: -estimatedWidth / 2,
+            y: -estimatedHeight,
+            width: estimatedWidth,
+            height: estimatedHeight
+          };
+        }
+      }
+    }
+  } catch (e) {}
+  
+  // 最后的兜底：基于容器尺寸的合理估算
+  // 假设角色高度约为容器高度的2倍（Spine原点通常在脚底）
+  const estimatedHeight = containerHeight * 2;
+  const estimatedWidth = estimatedHeight * 0.6; // 人物宽高比约0.6
+  return {
+    x: -estimatedWidth / 2,
+    y: -estimatedHeight,
+    width: estimatedWidth,
+    height: estimatedHeight
+  };
+}
+
+// 智能缩放和定位计算
+function calculateSmartScaleAndPosition(bounds, containerWidth, containerHeight) {
+  const spineWidth = bounds.width;
+  const spineHeight = bounds.height;
+  const aspectRatio = spineWidth / spineHeight;
+  
+  // 计算两个方向的缩放比例（留15%边距）
+  const scaleX = (containerWidth * 0.85) / spineWidth;
+  const scaleY = (containerHeight * 0.85) / spineHeight;
+  
+  let scale;
+  let adjustedBounds = bounds;
+  
+  // 智能选择缩放策略
+  if (aspectRatio > 1.2) {
+    // 宽高比大于1.2：宽度异常大（可能有横向特效）
+    // 假设角色主体宽度只有bounds宽度的60%，高度只有70%
+    // 用调整后的尺寸计算缩放
+    const estimatedMainWidth = spineWidth * 0.5;  // 主体宽度估计为bounds的50%
+    const estimatedMainHeight = spineHeight * 0.7; // 主体高度估计为bounds的70%
+    
+    const adjustedScaleX = (containerWidth * 0.85) / estimatedMainWidth;
+    const adjustedScaleY = (containerHeight * 0.85) / estimatedMainHeight;
+    scale = Math.min(adjustedScaleX, adjustedScaleY);
+    
+    // 调整bounds用于定位计算
+    adjustedBounds = {
+      x: bounds.x * 0.6,  // 主体中心偏向原点
+      y: bounds.y * 0.85,
+      width: estimatedMainWidth,
+      height: estimatedMainHeight
+    };
+    
+    console.log('宽高比异常大，使用调整后缩放:', {
+      aspectRatio: aspectRatio.toFixed(2),
+      originalScale: Math.min(scaleX, scaleY).toFixed(3),
+      adjustedScale: scale.toFixed(3),
+      estimatedMainSize: { w: estimatedMainWidth.toFixed(0), h: estimatedMainHeight.toFixed(0) }
+    });
+  } else if (aspectRatio < 0.4) {
+    // 宽高比小于0.4：高度异常大
+    const estimatedMainWidth = spineWidth * 0.8;
+    const estimatedMainHeight = spineHeight * 0.6;
+    
+    const adjustedScaleX = (containerWidth * 0.85) / estimatedMainWidth;
+    const adjustedScaleY = (containerHeight * 0.85) / estimatedMainHeight;
+    scale = Math.min(adjustedScaleX, adjustedScaleY);
+    
+    console.log('宽高比异常小，使用调整后缩放:', {
+      aspectRatio: aspectRatio.toFixed(2),
+      scale: scale.toFixed(3)
+    });
+  } else {
+    // 正常宽高比：取较小值保证完整显示
+    scale = Math.min(scaleX, scaleY);
+  }
+  
+  // 计算定位
+  let position;
+  
+  if (aspectRatio > 1.2 || aspectRatio < 0.4) {
+    // 宽高比异常时，直接将Spine原点放在容器底部中心
+    // Spine原点通常在角色脚底
+    position = {
+      x: containerWidth / 2,
+      y: containerHeight * 0.995  // 稍微往上一点，留5%边距
+    };
+    console.log('异常宽高比定位：底部中心');
+  } else {
+    // 正常情况，中心对齐
+    const boundsCenter = {
+      x: (bounds.x + bounds.width / 2) * scale,
+      y: (bounds.y + bounds.height / 2) * scale
+    };
+    position = {
+      x: containerWidth / 2 - boundsCenter.x,
+      y: containerHeight / 2 - boundsCenter.y
+    };
+  }
+  
+  return { scale, position };
+}
+
 // 创建Spine播放器（使用Pixi渲染）
 export function createSpinePlayer(containerId, spineData) {
   if (!spineData || !spineData.skel || !spineData.atlas) {
@@ -207,35 +441,20 @@ export function createSpinePlayer(containerId, spineData) {
           spineAnim.state.setAnimation(0, animToPlay, true);
         }
         
-        // 计算缩放比例使spine适应容器
-        const bounds = spineAnim.getLocalBounds();
-        
-        // 验证bounds是否有效
-        if (!bounds || !isFinite(bounds.width) || !isFinite(bounds.height) || bounds.width === 0 || bounds.height === 0) {
-          console.warn('Spine bounds无效:', containerId, bounds);
-          showPlaceholder(containerId);
-          return;
-        }
+        // 使用智能方法计算缩放比例
+        const bounds = getReliableSpineBounds(spineAnim, containerWidth, containerHeight);
         
         const spineWidth = bounds.width;
         const spineHeight = bounds.height;
         
-        // 计算适合容器的缩放比例（留15%边距）
-        const scaleX = (containerWidth * 0.85) / spineWidth;
-        const scaleY = (containerHeight * 0.85) / spineHeight;
-        const scale = Math.min(scaleX, scaleY);
+        // 智能缩放策略
+        const { scale, position } = calculateSmartScaleAndPosition(
+          bounds, containerWidth, containerHeight
+        );
         
         spineAnim.scale.set(scale);
-        
-        // 计算spine边界的中心点（考虑bounds的偏移）
-        const boundsCenter = {
-          x: (bounds.x + bounds.width / 2) * scale,
-          y: (bounds.y + bounds.height / 2) * scale
-        };
-        
-        // 将spine放置在容器中心，补偿边界偏移
-        spineAnim.x = containerWidth / 2 - boundsCenter.x;
-        spineAnim.y = containerHeight / 2 - boundsCenter.y;
+        spineAnim.x = position.x;
+        spineAnim.y = position.y;
         
         // 延迟一帧添加到舞台，确保纹理资源完全就绪
         requestAnimationFrame(() => {
@@ -343,28 +562,17 @@ function createSpineFromData(app, cachedSpineData, containerId, animation, conta
       spineAnim.state.setAnimation(0, animToPlay, true);
     }
     
-    // 计算缩放
-    const bounds = spineAnim.getLocalBounds();
+    // 使用智能方法计算缩放
+    const bounds = getReliableSpineBounds(spineAnim, containerWidth, containerHeight);
     
-    // 验证bounds是否有效
-    if (!bounds || !isFinite(bounds.width) || !isFinite(bounds.height) || bounds.width === 0 || bounds.height === 0) {
-      console.warn('Spine bounds无效:', containerId, bounds);
-      showPlaceholder(containerId);
-      return;
-    }
+    // 智能缩放策略
+    const { scale, position } = calculateSmartScaleAndPosition(
+      bounds, containerWidth, containerHeight
+    );
     
-    const scaleX = (containerWidth * 0.85) / bounds.width;
-    const scaleY = (containerHeight * 0.85) / bounds.height;
-    const scale = Math.min(scaleX, scaleY);
     spineAnim.scale.set(scale);
-    
-    // 定位
-    const boundsCenter = {
-      x: (bounds.x + bounds.width / 2) * scale,
-      y: (bounds.y + bounds.height / 2) * scale
-    };
-    spineAnim.x = containerWidth / 2 - boundsCenter.x;
-    spineAnim.y = containerHeight / 2 - boundsCenter.y;
+    spineAnim.x = position.x;
+    spineAnim.y = position.y;
     
     // 延迟一帧添加到舞台，确保纹理资源完全就绪
     requestAnimationFrame(() => {

@@ -7,23 +7,62 @@ import { clearTeamRenderCache, updateTeamUI } from './team.js';
 // 假设 charDetail.js 将被重构为导出 refreshCharDetail
 import { refreshCharDetail } from './charDetail.js';
 
-// ==================== 时装数据 ====================
-export const SKIN_DATA = {
+// ==================== 自动填充时装资源路径 ====================
+export function processSkinData(data) {
+  const processed = {};
+  for (const [skinId, skin] of Object.entries(data)) {
+    // 从 skinId 解析 skinIndex: "mlyss_skin_1" → 1
+    const match = skinId.match(/_skin_(\d+)$/);
+    const skinIndex = match ? parseInt(match[1]) : null;
+    const { charId } = skin;
+    
+    // 构建处理后的数据
+    const processedSkin = {
+      ...skin,
+      // 自动填充路径（已手动指定则优先使用手动值）
+      skinhead: skin.skinhead || (charId && skinIndex ?
+        `assets/skinhead/${charId}/${charId}_skin${skinIndex}.png` : null),
+      art: skin.art || (charId && skinIndex ?
+        `assets/art/${charId}/${charId}_skin${skinIndex}.png` : null)
+    };
+    
+    // 如果指定了 spineFile，自动生成完整 spine 配置
+    // spineFile 只需写文件名，如 "char_358_lisa_epoque_22"
+    if (skin.spineFile && !skin.spine) {
+      const spineDir = `spine/${charId}/${charId}_skin${skinIndex}`;
+      processedSkin.spine = {
+        skel: `${spineDir}/${skin.spineFile}.skel`,
+        atlas: `${spineDir}/${skin.spineFile}.atlas`,
+        animation: skin.spineAnimation || 'Idle'
+      };
+    }
+    
+    processed[skinId] = processedSkin;
+  }
+  return processed;
+}
+
+// ==================== 时装原始数据（简化配置） ====================
+// 说明：
+// - skinhead、art 自动根据 charId 和 skinIndex 生成
+// - spineFile 只需写文件名，会自动生成完整 spine 配置
+// - 如需自定义动画，可添加 spineAnimation 字段（默认 'Idle'）
+// - 仍可使用完整的 spine 对象覆盖自动生成
+export const SKIN_DATA_RAW = {
   // 缪尔赛思 - 2个时装位
   'mlyss_skin_1': {
     charId: 'char_249_mlyss',
-    name: '时装1（占位）',
+    name: '新枝',
     price: 20,
-    skinhead: null,
-    spine: null  // 暂无资源
-
+    artOffset: { x: 0, y: -205, z: 0 },
+    spineFile: 'char_249_mlyss_boc_8'
   },
   'mlyss_skin_2': {
     charId: 'char_249_mlyss',
-    name: '时装2（占位）',
+    name: '漫步于黄金之梦',
     price: 20,
-    skinhead: null,
-    spine: null
+    artOffset: { x: 0, y: -230, z: 0 },
+    spineFile: 'char_249_mlyss_ambienceSynesthesia_6'  // 只需文件名，自动生成完整路径
   },
   
   // 铃兰 - 3个时装位
@@ -31,34 +70,25 @@ export const SKIN_DATA = {
     charId: 'char_358_lisa',
     name: '弃土花开',
     price: 20,
-    skinhead: "assets/skinhead/char_358_lisa/char_358_lisa_skin1.png",
-    art: "assets/art/char_358_lisa/char_358_lisa_skin1.png",
-    artOffset: { x: 0, y: -282, z: 0 },  // 立绘位置偏移
-    spine: null
+    artOffset: { x: 0, y: -282, z: 0 }
   },
   'lisa_skin_2': {
     charId: 'char_358_lisa',
     name: '春之颂',
     price: 20,
-    skinhead: "assets/skinhead/char_358_lisa/char_358_lisa_skin2.png",
-    art: "assets/art/char_358_lisa/char_358_lisa_skin2.png",
-    artOffset: { x: 0, y: -300, z: 0 },
-    spine: null
+    artOffset: { x: 0, y: -300, z: 0 }
   },
   'lisa_skin_3': {
     charId: 'char_358_lisa',
     name: '雪霁',
     price: 20,
-    skinhead: "assets/skinhead/char_358_lisa/char_358_lisa_skin3.png",
-    art: "assets/art/char_358_lisa/char_358_lisa_skin3.png",
     artOffset: { x: 0, y: -299, z: 0 },
-    spine: {
-      skel: "spine/char_358_lisa/char_358_lisa_skin3/char_358_lisa_epoque_22.skel",
-      atlas: "spine/char_358_lisa/char_358_lisa_skin3/char_358_lisa_epoque_22.atlas",
-      animation: 'Idle'
-    }
+    spineFile: 'char_358_lisa_epoque_22'  // 只需文件名，自动生成完整路径
   }
 };
+
+// 处理后的时装数据
+export const SKIN_DATA = processSkinData(SKIN_DATA_RAW);
 
 // ==================== 时装系统 ====================
 export const SkinSystem = {
