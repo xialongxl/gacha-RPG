@@ -8,5 +8,28 @@
   "description": "明日方舟主题的回合制RPG游戏",
   "lang": "zh-CN",
   "orientation": "any",
-  "icons": []
+  "icons": [
+    {
+      "src": "assets/img/ak.png",
+      "sizes": "150x150",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "assets/img/screenshot-desktop.png",
+      "sizes": "1920x1080",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "游戏主界面 - 桌面版"
+    },
+    {
+      "src": "assets/img/screenshot-mobile.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "游戏主界面 - 移动版"
+    }
+  ]
 }
