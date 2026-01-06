@@ -20,7 +20,7 @@ import { updateResourceUI, showPage, showModal, closeModal, initSaveManagerScrol
 import { updateTeamUI, clearTeamRenderCache } from './team.js';
 import { dailyLogin, gachaSingle, gachaTen } from './gacha.js';
 import { fleeBattle } from './battle.js';
-import { showEndlessMode, initEndlessMode } from './endless_and_smartAI/endless.js';
+import { showEndlessMode, initEndlessMode, EndlessMode } from './endless_and_smartAI/endless.js';
 import { AudioManager, BGMPlayer, toggleBGMPlayer, playMainBGM } from './audio.js';
 import { SmartAI } from './endless_and_smartAI/smartAI.js';
 import './exchange.js'; // 导入以执行模块并绑定 window 函数
@@ -202,6 +202,9 @@ async function loadSaveSlot(slotId) {
   }
   
   await loadState(slotId);
+  
+  // 同步无尽模式的内部状态（从新加载的存档中读取 relayFloor 和 maxFloorReached）
+  await EndlessMode.loadProgress();
   
   // 刷新所有UI
   updateResourceUI();

@@ -537,6 +537,9 @@ export function executeSummonBuffEffect(ctx) {
       case 'atkPercent':
         buffText = `ATK +${value}%`;
         break;
+      case 'atkMultiplier':
+        buffText = `ATK +${Math.round(value * 100)}%`;
+        break;
       case 'spdFlat':
         buffText = `SPD +${value}`;
         break;
@@ -581,6 +584,9 @@ export function executeOwnerBuffEffect(ctx) {
     case 'atkPercent':
       buffText = `ATK +${value}%`;
       break;
+    case 'atkMultiplier':
+      buffText = `ATK +${Math.round(value * 100)}%`;
+      break;
     case 'spdFlat':
       buffText = `SPD +${value}`;
       break;
@@ -608,19 +614,18 @@ export function executeStackingAtkBuff(ctx) {
   
   const useCount = user.skillUseCount[skillName];
   const minUses = effect.minUses || 2;
+  const mult = effect.multiplier;
+  
   
   if (useCount >= minUses) {
-    const buffValue = Math.floor(user.atk * effect.multiplier);
-    const mult = effect.multiplier;
-    //user.buffAtk = (user.buffAtk || 0) + buffValue;
     user.buffAtkMultiplier = (user.buffAtkMultiplier || 0) + mult;
     result.logs.push({ 
-      text: `  → 🔥 二重咏唱第${useCount}次！ATK +${buffValue}（+${Math.floor(effect.multiplier * 100)}%）！`, 
+      text: `  → 🔥 二重咏唱第${useCount}次！ATK +${Math.floor(mult * 100)}%！`, 
       type: 'system' 
     });
   } else {
     result.logs.push({ 
-      text: `  → 二重咏唱第${useCount}次（第${minUses}次起追加ATK+${Math.floor(effect.multiplier * 100)}%）`, 
+      text: `  → 二重咏唱第${useCount}次（第${minUses}次起追加ATK+${Math.floor(mult * 100)}%）`, 
       type: 'system' 
     });
   }
@@ -643,7 +648,7 @@ export function executeSplashDamage(ctx) {
   result.logs.push({ text: `  🔥 点燃爆炸！周围敌人受到溅射伤害：`, type: 'system' });
   
   enemies.forEach(enemy => {
-    const actualDmg = Math.max(1, splashDmg - enemy.def * 0.5);
+    const actualDmg = Math.max(1, Math.floor(splashDmg - enemy.def * 0.5));
     enemy.currentHp -= actualDmg;
     result.logs.push({ text: `  → ${enemy.name} 受到 ${actualDmg} 溅射伤害！`, type: 'damage' });
   });
@@ -721,17 +726,24 @@ export function executeDebuffDuration(ctx) {
  * @param {Object} ctx - 上下文对象
  */
 export function executeSelfBuffThenAttack(ctx) {
-  const { effect, user, result } = ctx;
-  const atkBonus = effect.atkBonus || 1.3;
-  const buffValue = Math.floor(user.atk * atkBonus);
-  //user.buffAtk = (user.buffAtk || 0) + buffValue;
+  const { effect, user, skill, result } = ctx;
   const mult = effect.multiplier;
   user.buffAtkMultiplier = (user.buffAtkMultiplier || 0) + mult;
-  
+
+
+
+  if (skill.name === '火山') {
   result.logs.push({ 
-    text: `  → 🌋 火山喷发！${user.name} ATK +${buffValue}（+${Math.floor(atkBonus * 100)}%）！`, 
+    text: `  → 🌋 火山喷发！${user.name} ATK +${Math.floor(mult * 100)}%！`, 
     type: 'system' 
   });
+} else {
+  result.logs.push({ 
+    text: `  → ${user.name} ATK +${Math.floor(mult * 100)}%！`, 
+    type: 'system' 
+  });
+}
+
 }
 
 // ==================== 夜莺专属效果 ====================

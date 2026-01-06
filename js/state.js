@@ -44,7 +44,10 @@ const DEFAULT_STATE = {
   equippedSkins: {},        // 已装备的时装 { 干员ID: 时装ID }
   // 无尽商店道具
   reviveTickets: 0,         // 复活券
-  relayTickets: 0           // 接力券
+  relayTickets: 0,          // 接力券
+  // 无尽模式进度（现在存入存档，确保可以恢复）
+  relayFloor: null,         // 接力券记录的层数
+  maxFloorReached: 0        // 无尽模式历史最高层数
 };
 
 // 当前游戏状态

@@ -249,23 +249,22 @@ export const CONFIG = {
   ROGUELIKE: {
     // 强化选项（每5层可选）
     UPGRADES: {
-      atkUp: { name: '攻击强化', icon: '⚔️', desc: '全队攻击+15%', type: 'stat', stat: 'atk', value: 0.15 },
-      defUp: { name: '防御强化', icon: '🛡️', desc: '全队防御+15%', type: 'stat', stat: 'def', value: 0.15 },
-      hpUp: { name: '生命强化', icon: '❤️', desc: '全队生命+20%', type: 'stat', stat: 'hp', value: 0.20 },
-      spdUp: { name: '速度强化', icon: '💨', desc: '全队速度+10', type: 'stat', stat: 'spd', value: 10 },
+      atkUp: { name: '攻击强化', icon: '⚔️', desc: '全队攻击+25%', type: 'stat', stat: 'atk', value: 0.25 },
+      defUp: { name: '防御强化', icon: '🛡️', desc: '全队防御+25%', type: 'stat', stat: 'def', value: 0.25 },
+      hpUp: { name: '生命强化', icon: '❤️', desc: '全队生命+30%', type: 'stat', stat: 'hp', value: 0.30 },
+      spdUp: { name: '速度强化', icon: '💨', desc: '全队速度+25', type: 'stat', stat: 'spd', value: 25 },
       critUp: { name: '暴击强化', icon: '🎯', desc: '暴击率+15%', type: 'special', effect: 'crit', value: 0.15 },
       vampUp: { name: '吸血强化', icon: '🩸', desc: '全队+10%吸血', type: 'special', effect: 'vamp', value: 0.10 },
-      heal: { name: '紧急治疗', icon: '💚', desc: '全队恢复50%HP', type: 'instant', effect: 'heal', value: 0.50 },
-      revive: { name: '复活', icon: '✨', desc: '复活1个已死亡队友', type: 'instant', effect: 'revive' },
+      regenPerTurn: { name: '备用医疗装置', icon: '💚', desc: '全队每回合回复10%HP', type: 'special', effect: 'regenPerTurn', value: 0.10 },
       energyUp: { name: '能量强化', icon: '⚡', desc: '全队能量+50', type: 'instant', effect: 'energy', value: 50 },
-      shieldAll: { name: '护盾', icon: '🔰', desc: '全队获得20%HP护盾', type: 'instant', effect: 'shield', value: 0.20 },
+      shieldAll: { name: '战斗护盾', icon: '🔰', desc: '每层战斗开始时获得25%HP护盾', type: 'battle_start', effect: 'shield', value: 0.25 },
       extraLife: { name: '额外生命', icon: '💖', desc: '1次免死金牌', type: 'special', effect: 'extraLife' },
       doubleReward: { name: '双倍奖励', icon: '💰', desc: '本次挑战奖励x2', type: 'special', effect: 'doubleReward' }
     },
     // 每次提供的选项数量
-    OPTIONS_COUNT: 3,
+    OPTIONS_COUNT: 5,
     // 强化间隔层数
-    UPGRADE_INTERVAL: 5
+    UPGRADE_INTERVAL: 3
   }
 };
 

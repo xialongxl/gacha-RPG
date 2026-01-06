@@ -170,7 +170,7 @@ export const SKILL_EFFECTS = {
     target: 'random6',
     desc: '消耗90能量，ATK+130%后随机攻击6个敌人',
     effects: [
-      { type: 'self_buff_then_attack', atkBonus: 1.3 },
+      { type: 'self_buff_then_attack', multiplier: 1.3 },
       { type: 'damage', multiplier: 1.0 }
     ]
   },
@@ -352,7 +352,7 @@ export const SKILL_EFFECTS = {
     cost: 20,
     gain: 0,
     target: 'self',
-    desc: '消耗20能量，自身攻击力+80%，速度+30',
+    desc: '消耗20能量，自身攻击力+80%，速度+30（可叠加）',
     effects: [
       { type: 'buff', stat: 'atk', multiplier: 0.8 },
       { type: 'buff', stat: 'spd', value: 30 }
@@ -362,16 +362,17 @@ export const SKILL_EFFECTS = {
     cost: 60,
     gain: 0,
     target: 'random3',
-    desc: '消耗80能量，造成160%攻击力伤害，并同时攻击3个敌方单位',
+    desc: '消耗60能量，攻击力+60%，并同时攻击3个敌方单位',
     effects: [
-      { type: 'damage', multiplier: 1.6 }
+      { type: 'self_buff_then_attack', multiplier: 0.6 },
+      { type: 'damage', multiplier: 1.0 }
     ]
   },
   '狐火渺然': {
     cost: 80,
     gain: 0,
     target: 'all',
-    desc: '消耗70能量，全体队友回复20%攻击力的HP，敌人全体减速30%（持续2回合）',
+    desc: '消耗80能量，全体队友回复30%攻击力的HP，敌人全体减速80%（持续2回合）',
     effects: [
       { type: 'heal', multiplier: 0.2, target: 'all_ally' },
       { type: 'debuff_duration', stat: 'spd', multiplier: 0.3, target: 'all_enemy', duration: 2 }

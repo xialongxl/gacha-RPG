@@ -70,31 +70,55 @@ export const EndlessMode = {
     console.log('🏰 无尽模式初始化完成，历史最高:', this.maxFloorReached, '层');
   },
   
-  // 读取进度（使用Dexie）
+  // 读取进度（优先从 state 存档读取，兼容旧数据从 settings 迁移）
   async loadProgress() {
     try {
+      // 优先从 state 存档读取（新架构）
+      if (state.relayFloor !== undefined || state.maxFloorReached !== undefined) {
+        this.maxFloorReached = state.maxFloorReached || 0;
+        this.relayFloor = state.relayFloor || null;
+        console.log('📂 从存档读取无尽进度: maxFloor=' + this.maxFloorReached + ', relay=' + this.relayFloor);
+        return;
+      }
+      
+      // 兼容性：从旧的 settings 迁移数据
       const saved = await GameDB.settings.get('endless_progress');
       if (saved && saved.value) {
         this.maxFloorReached = saved.value.maxFloorReached || 0;
-        this.relayFloor = saved.value.relayFloor || null;  // 读取接力层数
+        this.relayFloor = saved.value.relayFloor || null;
+        
+        // 迁移到 state
+        state.maxFloorReached = this.maxFloorReached;
+        state.relayFloor = this.relayFloor;
+        store.save();  // 触发自动存档
+        
+        console.log('📦 从旧设置迁移无尽进度到存档: maxFloor=' + this.maxFloorReached + ', relay=' + this.relayFloor);
       }
     } catch (e) {
       console.error('读取无尽模式进度失败:', e);
-      this.maxFloorReached = 0;
-      this.relayFloor = null;
+      this.maxFloorReached = state.maxFloorReached || 0;
+      this.relayFloor = state.relayFloor || null;
     }
   },
   
-  // 保存进度（使用Dexie）
+  // 保存进度（同时保存到 state 存档和 settings 以保持兼容性）
   async saveProgress() {
     try {
+      // 保存到 state（主要存储，会触发自动存档）
+      state.maxFloorReached = this.maxFloorReached;
+      state.relayFloor = this.relayFloor;
+      store.save();  // 触发自动存档
+      
+      // 同时保存到 settings（兼容性，可选）
       await GameDB.settings.put({
         id: 'endless_progress',
         value: {
           maxFloorReached: this.maxFloorReached,
-          relayFloor: this.relayFloor  // 保存接力层数
+          relayFloor: this.relayFloor
         }
       });
+      
+      console.log('💾 无尽进度已保存: maxFloor=' + this.maxFloorReached + ', relay=' + this.relayFloor);
     } catch (e) {
       console.error('保存无尽模式进度失败:', e);
     }
@@ -586,13 +610,15 @@ export const EndlessMode = {
       const critBonus = this.getSpecialBonus('crit');
       const vampBonus = this.getSpecialBonus('vamp');
       const hasExtraLife = this.hasSpecialEffect('extraLife');
+      const regenPerTurn = this.getSpecialBonus('regenPerTurn');
       
       // 调试日志：显示特殊效果
-      if (critBonus > 0 || vampBonus > 0 || hasExtraLife) {
+      if (critBonus > 0 || vampBonus > 0 || hasExtraLife || regenPerTurn > 0) {
         console.log(`🎁 Roguelike特殊效果应用到 ${name}:`, {
           crit: `${Math.round(critBonus * 100)}%`,
           vamp: `${Math.round(vampBonus * 100)}%`,
-          extraLife: hasExtraLife
+          extraLife: hasExtraLife,
+          regenPerTurn: `${Math.round(regenPerTurn * 100)}%`
         });
       }
       
@@ -621,7 +647,9 @@ export const EndlessMode = {
         // Roguelike特殊效果
         critBonus: critBonus,
         vampBonus: vampBonus,
-        hasExtraLife: hasExtraLife
+        hasExtraLife: hasExtraLife,
+        // 每回合回血（备用医疗装置）
+        healPerTurn: regenPerTurn
       };
     });
     
@@ -664,6 +692,9 @@ export const EndlessMode = {
     
     // 应用光环词缀：增益友方攻击力
     this.applyAuraAffixes();
+    
+    // 应用战斗开始时的强化效果（护盾等）
+    this.applyBattleStartUpgrades();
     
     // 初始化召唤系统
     if (typeof SummonSystem !== 'undefined') {
@@ -938,6 +969,26 @@ export const EndlessMode = {
   // 检查是否有特殊效果
   hasSpecialEffect(effect) {
     return this.currentBuffs.some(buff => buff.type === 'special' && buff.effect === effect);
+  },
+  
+  // 应用战斗开始时的强化效果
+  applyBattleStartUpgrades() {
+    this.currentBuffs.forEach(buff => {
+      // battle_start 类型：护盾
+      if (buff.type === 'battle_start' && buff.effect === 'shield') {
+        battle.allies.forEach(ally => {
+          const shieldAmount = Math.floor(ally.maxHp * buff.value);
+          ally.tempShield = (ally.tempShield || 0) + shieldAmount;
+        });
+        addBattleLog(`🔰 战斗护盾生效！全队获得${Math.floor(buff.value * 100)}%HP护盾！`, 'system');
+      }
+    });
+    
+    // 如果有每回合回血强化，记录日志
+    const regenBonus = this.getSpecialBonus('regenPerTurn');
+    if (regenBonus > 0) {
+      addBattleLog(`💚 备用医疗装置生效！全队每回合回复${Math.floor(regenBonus * 100)}%HP！`, 'system');
+    }
   },
   
   // 获取初始能量（包含Roguelike能量强化）
