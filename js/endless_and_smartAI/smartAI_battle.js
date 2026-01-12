@@ -35,7 +35,7 @@ export const SmartAI_Battle = {
    * @param {Array} aliveAllies - 存活的玩家单位
    * @param {Array} aliveEnemies - 存活的敌人单位
    */
-  async recordEnemyAction(enemy, decision, aliveAllies, aliveEnemies) {
+  async recordEnemyAction(enemy, decision, aliveAllies, aliveEnemies, evaluationScore = 3) {
     // 只在无尽模式记录
     if (!battle.isEndless) return;
     if (!this.learningEnabled) return;
@@ -52,8 +52,18 @@ export const SmartAI_Battle = {
       targetName: decision.target ? decision.target.name : ''
     };
     
-    // 记录到SmartAI数据库
-    await SmartAI.recordEnemyAction(battleState, action);
+    // 记录到SmartAI数据库 (传入评分)
+    await SmartAI.recordEnemyAction(battleState, action, evaluationScore);
+  },
+
+  /**
+   * 评价敌人行动 (代理到 SmartAI)
+   */
+  evaluateAction(skill, target, result) {
+    if (typeof SmartAI === 'undefined' || !SmartAI.evaluateAction) {
+      return { score: 3, comments: "AI未就绪", stars: "⭐⭐⭐" };
+    }
+    return SmartAI.evaluateAction(skill, target, result);
   },
   
   /**

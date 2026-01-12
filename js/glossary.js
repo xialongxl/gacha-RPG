@@ -57,7 +57,15 @@ export const GLOSSARY = {
   '召唤物': {
     tip: '继承召唤师属性，召唤师死亡时消失',
     type: 'special'
-  }
+  },
+  '余震': {
+    tip: '对目标造成50%ATK的额外伤害',
+    type: 'special'
+  },
+  '范围化': {
+    tip: '攻击范围变为目标与其相邻敌人',
+    type: 'special'
+  },
 };
 
 /**

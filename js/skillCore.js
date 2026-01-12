@@ -52,7 +52,12 @@ import {
   executeTeamTempShield,
   executeTeamBuffDuration,
   executeSanctuaryMode,
-  checkPlayerDodge
+  checkPlayerDodge,
+  // 迷迭香专属
+  executeAftershockEffect,
+  executeAftershockCountBuff,
+  executeAftershockAoeBuff,
+  executeAftershockStunBuff
 } from './skillEffects.js';
 
 // 重新导出 getUnitDef 供外部使用
@@ -152,6 +157,18 @@ export function getUnitSpd(unit) {
   return spd;
 }
 
+// ==================== 伤害来源定义 ====================
+
+/**
+ * 伤害来源类型
+ * 用于控制破盾逻辑和反伤触发
+ */
+export const DMG_SOURCE = {
+  DIRECT: 'direct',       // 直接攻击 (普攻/技能) -> 破盾✅ 反伤✅
+  ENVIRONMENT: 'env',     // 环境/余震 (冲击波) -> 破盾✅ 反伤❌
+  DOT: 'dot'              // 持续伤害 (毒/灼烧) -> 破盾❌ 反伤❌
+};
+
 // ==================== 效果执行器映射表 ====================
 
 /**
@@ -181,7 +198,13 @@ const EFFECT_HANDLERS = {
   // 夜莺专属
   team_temp_shield: executeTeamTempShield,
   team_buff_duration: executeTeamBuffDuration,
-  sanctuary_mode: executeSanctuaryMode
+  sanctuary_mode: executeSanctuaryMode,
+  
+  // 迷迭香专属
+  aftershock: executeAftershockEffect,
+  aftershock_count_buff: executeAftershockCountBuff,
+  aftershock_aoe_buff: executeAftershockAoeBuff,
+  aftershock_stun_buff: executeAftershockStunBuff
 };
 
 // ==================== 核心技能执行 ====================
@@ -199,7 +222,10 @@ export function executeSkillEffects(skill, user, target, isEnemy) {
     logs: [],
     deaths: [],
     energyChanges: [],
-    shieldBreaks: []
+    shieldBreaks: [],
+    totalDamage: 0,
+    hitCount: 0,
+    affectedTargets: []
   };
   
   // 复制技能效果

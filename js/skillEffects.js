@@ -4,9 +4,10 @@
 import { battle } from './state.js';
 import { SummonSystem } from './summon.js';
 import { SKILL_EFFECTS } from './skillData.js';
+import { DMG_SOURCE } from './skillCore.js';
 import {
-  processAffixDodge, 
-  processAffixShield, 
+  processAffixDodge,
+  processAffixShield,
   processAffixUndying, 
   processAffixThorns, 
   processAffixVampiric,
@@ -68,7 +69,144 @@ function getLocalUnitAtk(unit) {
   return atk;
 }
 
+// ==================== 相邻敌人判定 ====================
+
+/**
+ * 获取目标的相邻敌人
+ * 敌人排列为 A-B-C-D，攻击B时相邻为A和C（索引 i-1 和 i+1）
+ * @param {Object} target - 目标敌人
+ * @returns {Array} 相邻敌人数组
+ */
+export function getAdjacentEnemies(target) {
+  const aliveEnemies = battle.enemies.filter(e => e.currentHp > 0);
+  const targetIndex = aliveEnemies.indexOf(target);
+  
+  if (targetIndex === -1) return [];
+  
+  const adjacent = [];
+  
+  // 左边相邻
+  if (targetIndex > 0) {
+    adjacent.push(aliveEnemies[targetIndex - 1]);
+  }
+  // 右边相邻
+  if (targetIndex < aliveEnemies.length - 1) {
+    adjacent.push(aliveEnemies[targetIndex + 1]);
+  }
+  
+  return adjacent;
+}
+
 // ==================== 伤害效果 ====================
+
+/**
+ * 核心伤害处理函数
+ * 封装了：眩晕必中、闪避、防御计算、护盾吸收、Break机制、HP扣除
+ * @param {Object} target - 目标单位
+ * @param {number} rawIncomingDamage - 原始传入伤害 (Atk * Multiplier)
+ * @param {Object} ctx - 上下文 { user, result, sourceType, isCrit, critMultiplier, isEnemy }
+ * @returns {Object} { damage: number, dodged: boolean, isKill: boolean, absorbed: boolean }
+ */
+function applyDamageCore(target, rawIncomingDamage, ctx) {
+  const { user, result, sourceType, isCrit, critMultiplier = 1.0, isEnemy } = ctx;
+
+  // 1. 眩晕必中判定
+  const isStunned = target.stunDuration && target.stunDuration > 0;
+  
+  if (!isStunned) {
+    // 2. 闪避判定
+    // 敌人闪避词缀
+    if (processAffixDodge(target, result)) {
+      return { dodged: true, damage: 0 };
+    }
+    // 玩家闪避 (圣域) - 仅当使用者是敌人(攻击玩家)时触发
+    if (isEnemy && !target.isEnemy) {
+      if (checkPlayerDodge(target, result)) {
+        return { dodged: true, damage: 0 };
+      }
+    }
+  } else {
+    result.logs.push({ text: `  🎯 ${target.name} 处于眩晕状态，无法闪避！`, type: 'system' });
+  }
+
+  // 3. 伤害计算
+  // 霸体减伤：如果护盾未破，受到的伤害减半
+  const shieldReduction = (target.currentShield > 0 && !target.shieldBroken) ? 0.5 : 1;
+  const def = getUnitDef(target);
+  
+  // 基础公式
+  let dmg = Math.floor(rawIncomingDamage * shieldReduction - def * 0.5);
+  // 应用暴击
+  dmg = Math.floor(dmg * critMultiplier);
+  // 保底伤害
+  dmg = Math.max(1, dmg);
+
+  // 4. 词缀护盾 (Affix Shield)
+  dmg = processAffixShield(target, dmg, result);
+  
+  if (dmg <= 0) return { dodged: false, damage: 0 };
+
+  // 5. 临时护盾 (Temp Shield) - 玩家单位
+  if (!target.isEnemy && target.tempShield && target.tempShield > 0) {
+    result.hitShield = true;
+    if (target.tempShield >= dmg) {
+      target.tempShield -= dmg;
+      result.logs.push({
+        text: `  🔰 ${target.name} 护盾吸收 ${dmg} 伤害！（剩余护盾: ${target.tempShield}）`,
+        type: 'system'
+      });
+      result.totalDamage = (result.totalDamage || 0) + dmg;
+      result.hitCount = (result.hitCount || 0) + 1;
+      if (!result.affectedTargets.includes(target)) result.affectedTargets.push(target);
+      return { dodged: false, damage: 0, absorbed: true };
+    } else {
+      const absorbed = target.tempShield;
+      result.totalDamage = (result.totalDamage || 0) + absorbed;
+      dmg -= target.tempShield;
+      target.tempShield = 0;
+      result.tempShieldBroken = true;
+      result.logs.push({
+        text: `  🔰 ${target.name} 护盾吸收 ${absorbed} 伤害并破碎！`,
+        type: 'system'
+      });
+    }
+  }
+
+  // 6. Break (破盾) 逻辑
+  // DIRECT 和 ENVIRONMENT 均可破盾
+  // 6. Break (破盾) 逻辑
+  // DIRECT 和 ENVIRONMENT 均可破盾，但仅限我方攻击（!isEnemy）能触发破盾
+  if (!isEnemy && target.currentShield > 0 && !target.shieldBroken &&
+     (sourceType === DMG_SOURCE.DIRECT || sourceType === DMG_SOURCE.ENVIRONMENT)) {
+    
+    target.currentShield = Math.max(0, target.currentShield - 1);
+    result.logs.push({
+      text: `  → ${target.name} 护盾 -1（剩余 ${target.currentShield}/${target.shield}）`,
+      type: 'system'
+    });
+    
+    if (target.currentShield <= 0) {
+      target.shieldBroken = true;
+      target.stunDuration = (target.stunDuration || 0) + 1;
+      target.originalDef = target.def;
+      target.def = 0;
+      
+      result.shieldBreaks.push(target);
+      result.logs.push({
+        text: `  💥 BREAK! ${target.name} 护盾破碎！眩晕1回合，防御归零！`,
+        type: 'damage'
+      });
+    }
+  }
+
+  // 7. 扣除 HP
+  target.currentHp -= dmg;
+  result.totalDamage = (result.totalDamage || 0) + dmg;
+  result.hitCount = (result.hitCount || 0) + 1;
+  if (!result.affectedTargets.includes(target)) result.affectedTargets.push(target);
+
+  return { dodged: false, damage: dmg, isKill: target.currentHp <= 0 };
+}
 
 /**
  * 执行伤害效果
@@ -80,81 +218,59 @@ function getLocalUnitAtk(unit) {
  * @param {string} ctx.effectTarget - 目标类型
  * @param {boolean} ctx.isEnemy - 是否敌人使用
  * @param {Object} ctx.result - 结果对象
+ * @param {string} ctx.sourceType - 伤害来源 (默认 DIRECT)
  */
 export function executeDamageEffect(ctx) {
   const { effect, user, target, effectTarget, isEnemy, result } = ctx;
+  const sourceType = ctx.sourceType || DMG_SOURCE.DIRECT;
   
-  // 【修复Bug 1】重新获取最新的ATK值，而不是使用预先计算的ctx.atk
-  // 这确保了self_buff_then_attack（火山）等效果的加成能被正确应用到后续伤害
+  // 【修复Bug 1】重新获取最新的ATK值
   const atk = getLocalUnitAtk(user);
   // 计算狂化加成
   const berserkBonus = getAffixBerserkBonus(user);
   const effectiveAtk = Math.floor(atk * (1 + berserkBonus));
   
   // 暴击判定（玩家Roguelike强化）
-  const critBonus = user.critBonus || 0;  // 小数形式，如0.15表示15%
+  const critBonus = user.critBonus || 0;
   let isCrit = false;
   if (!isEnemy && critBonus > 0) {
-    isCrit = Math.random() < critBonus;  // 直接用小数比较，0.15就是15%概率
+    isCrit = Math.random() < critBonus;
   }
-  const critMultiplier = isCrit ? 1.5 : 1.0;  // 暴击伤害 +50%
+  const critMultiplier = isCrit ? 1.5 : 1.0;
   
-  const calcDamage = (t) => {
-    const shieldReduction = (t.currentShield > 0 && !t.shieldBroken) ? 0.5 : 1;
-    const def = getUnitDef(t);
-    let dmg = Math.floor(effectiveAtk * effect.multiplier * shieldReduction - def * 0.5);
-    dmg = Math.floor(dmg * critMultiplier);  // 应用暴击
-    return Math.max(1, dmg);
-  };
-  
+  // 准备核心上下文
+  const coreCtx = { user, result, sourceType, isCrit, critMultiplier, isEnemy };
+  const rawDamage = Math.floor(effectiveAtk * effect.multiplier);
+
   // 敌人攻击我方（包含召唤物），我方攻击敌人
   const enemies = isEnemy ? [...battle.allies, ...battle.summons] : battle.enemies;
   
   const applyDamage = (t) => {
-    // 处理闪避词缀（敌人专属）
-    if (processAffixDodge(t, result)) {
-      return;  // 闪避成功，不造成伤害
-    }
+    // 调用核心伤害处理
+    const outcome = applyDamageCore(t, rawDamage, coreCtx);
     
-    // 处理玩家闪避（圣域效果）
-    if (isEnemy && !t.isEnemy) {
-      if (checkPlayerDodge(t, result)) {
-        return;  // 玩家闪避成功
-      }
-    }
+    // 如果被闪避、被护盾完全吸收，或伤害被减免至0，则不输出伤害日志
+    if (outcome.dodged || outcome.absorbed || outcome.damage <= 0) return;
     
-    let dmg = calcDamage(t);
-    
-    // 处理词缀护盾
-    dmg = processAffixShield(t, dmg, result);
-    
-    if (dmg <= 0) return;
-    
-    // 处理Roguelike临时护盾（玩家单位）
-    if (!t.isEnemy && t.tempShield && t.tempShield > 0) {
-      if (t.tempShield >= dmg) {
-        t.tempShield -= dmg;
-        result.logs.push({ 
-          text: `  🔰 ${t.name} 护盾吸收 ${dmg} 伤害！（剩余护盾: ${t.tempShield}）`, 
-          type: 'system' 
-        });
-        return;  // 伤害完全被护盾吸收
-      } else {
-        const absorbed = t.tempShield;
-        dmg -= t.tempShield;
-        t.tempShield = 0;
-        result.logs.push({ 
-          text: `  🔰 ${t.name} 护盾吸收 ${absorbed} 伤害并破碎！`, 
-          type: 'system' 
-        });
-      }
-    }
-    
-    t.currentHp -= dmg;
-    
+    const dmg = outcome.damage;
     const unitPrefix = t.isSummon ? '🔮' : '';
     const critText = isCrit ? '💥暴击！' : '';
+    
     result.logs.push({ text: `  → ${unitPrefix}${t.name} 受到 ${dmg} 伤害！${critText}`, type: 'damage' });
+    
+    // 处理概率眩晕（迷迭香末梢阻断：检查用户身上的attackStunChance或效果自带的stunChance）
+    const stunChance = user.attackStunChance || effect.stunChance || 0;
+    if (stunChance > 0 && t.currentHp > 0) {
+      // 霸体检测：有护盾且未破盾时免疫眩晕
+      if (t.currentShield > 0 && !t.shieldBroken) {
+        result.logs.push({ text: `  🛡️ ${t.name} 霸体免疫眩晕！`, type: 'system' });
+      } else {
+        if (Math.random() < stunChance) {
+          t.stunDuration = (t.stunDuration || 0) + 1;
+          result.logs.push({ text: `  → 💫 ${t.name} 被眩晕 1 回合！`, type: 'system' });
+        }
+      }
+    }
     
     // 处理不死词缀
     if (t.currentHp <= 0) {
@@ -163,54 +279,36 @@ export function executeDamageEffect(ctx) {
       }
     }
     
-    // 处理反伤词缀
-    processAffixThorns(t, user, dmg, result);
+    // 处理反伤词缀 (仅 DIRECT)
+    if (sourceType === DMG_SOURCE.DIRECT) {
+      processAffixThorns(t, user, dmg, result);
+    }
     
-    // 处理吸血词缀（敌人词缀）
+    // 处理吸血词缀
     processAffixVampiric(user, dmg, result);
     
-    // 处理玩家Roguelike吸血强化（非敌人使用时）
+    // 处理玩家Roguelike吸血强化
     if (!isEnemy && user.vampBonus && user.vampBonus > 0) {
-      const vampHeal = Math.floor(dmg * user.vampBonus);  // 小数形式，0.10就是10%吸血
+      const vampHeal = Math.floor(dmg * user.vampBonus);
       if (vampHeal > 0) {
         const oldHp = user.currentHp;
         user.currentHp = Math.min(user.maxHp, user.currentHp + vampHeal);
         const actualHeal = user.currentHp - oldHp;
         if (actualHeal > 0) {
-          result.logs.push({ 
-            text: `  💉 ${user.name} 吸血恢复 ${actualHeal} HP！`, 
-            type: 'heal' 
-          });
+          result.logs.push({ text: `  💉 ${user.name} 吸血恢复 ${actualHeal} HP！`, type: 'heal' });
         }
-      }
-    }
-    
-    // 普通攻击破盾1格（仅对敌人有效）
-    if (!isEnemy && t.currentShield > 0 && !t.shieldBroken) {
-      t.currentShield = Math.max(0, t.currentShield - 1);
-      result.logs.push({ 
-        text: `  → ${t.name} 护盾 -1（剩余 ${t.currentShield}/${t.shield}）`, 
-        type: 'system' 
-      });
-      
-      if (t.currentShield <= 0) {
-        t.shieldBroken = true;
-        t.stunDuration = (t.stunDuration || 0) + 1;
-        t.originalDef = t.def;
-        t.def = 0;
-        
-        result.shieldBreaks.push(t);
-        result.logs.push({ 
-          text: `  💥 ${t.name} 护盾破碎！眩晕1回合，防御归零！`, 
-          type: 'damage' 
-        });
       }
     }
     
     // 召唤物攻击附带眩晕（只对敌人生效）
     if (user.isSummon && user.buffs && user.buffs.stunOnHit && t.isEnemy) {
-      t.stunDuration = (t.stunDuration || 0) + 1;
-      result.logs.push({ text: `  → ${t.name} 被眩晕 1 回合！`, type: 'system' });
+      // 霸体检测
+      if (t.currentShield > 0 && !t.shieldBroken) {
+        result.logs.push({ text: `  🛡️ ${t.name} 霸体免疫召唤物眩晕！`, type: 'system' });
+      } else {
+        t.stunDuration = (t.stunDuration || 0) + 1;
+        result.logs.push({ text: `  → ${t.name} 被眩晕 1 回合！`, type: 'system' });
+      }
     }
     
     // 被攻击者获得能量（仅我方干员，不含召唤物）
@@ -285,9 +383,10 @@ export function executeShieldBreakEffect(ctx) {
     const oldShield = t.currentShield;
     t.currentShield = Math.max(0, oldShield - breakAmount);
     
-    result.logs.push({ 
-      text: `  → ${t.name} 护盾 -${breakAmount}（剩余 ${t.currentShield}/${t.shield}）`, 
-      type: 'system' 
+    if (!result.affectedTargets.includes(t)) result.affectedTargets.push(t);
+    result.logs.push({
+      text: `  → ${t.name} 护盾 -${breakAmount}（剩余 ${t.currentShield}/${t.shield}）`,
+      type: 'system'
     });
     
     if (t.currentShield <= 0 && !t.shieldBroken) {
@@ -332,7 +431,11 @@ export function executeHealEffect(ctx) {
     const oldHp = t.currentHp;
     t.currentHp = Math.min(t.maxHp, t.currentHp + healAmt);
     const actualHeal = t.currentHp - oldHp;
+    // 记录总治疗量，用于AI评分
+    result.totalHeal = (result.totalHeal || 0) + actualHeal;
+    
     const unitPrefix = t.isSummon ? '🔮' : '';
+    if (!result.affectedTargets.includes(t)) result.affectedTargets.push(t);
     if (actualHeal > 0) {
       result.logs.push({ text: `  → ${unitPrefix}${t.name} 恢复 ${actualHeal} HP！`, type: 'heal' });
     } else {
@@ -422,6 +525,7 @@ export function executeBuffEffect(ctx) {
     }
     
     if (logText) {
+      if (!result.affectedTargets.includes(t)) result.affectedTargets.push(t);
       result.logs.push({ text: `  → ${unitPrefix}${t.name} ${logText}！`, type: 'system' });
     }
   };
@@ -457,14 +561,17 @@ export function executeDebuffEffect(ctx) {
     switch (effect.stat) {
       case 'atk':
         t.atk = Math.max(1, t.atk - debuffValue);
+        if (!result.affectedTargets.includes(t)) result.affectedTargets.push(t);
         result.logs.push({ text: `  → ${t.name} ATK -${debuffValue}！`, type: 'system' });
         break;
       case 'spd':
         t.spd = Math.max(1, t.spd - debuffValue);
+        if (!result.affectedTargets.includes(t)) result.affectedTargets.push(t);
         result.logs.push({ text: `  → ${t.name} SPD -${debuffValue}！`, type: 'system' });
         break;
       case 'def':
         t.def = Math.max(0, t.def - debuffValue);
+        if (!result.affectedTargets.includes(t)) result.affectedTargets.push(t);
         result.logs.push({ text: `  → ${t.name} DEF -${debuffValue}！`, type: 'system' });
         break;
     }
@@ -484,14 +591,174 @@ export function executeDebuffEffect(ctx) {
 
 /**
  * 执行眩晕效果
+ * 支持单体和全体目标
  * @param {Object} ctx - 上下文对象
  */
 export function executeStunEffect(ctx) {
-  const { effect, target, result } = ctx;
-  if (target) {
-    target.stunDuration = (target.stunDuration || 0) + (effect.duration || 1);
-    result.logs.push({ text: `  → ${target.name} 被眩晕 ${effect.duration} 回合！`, type: 'system' });
+  const { effect, target, isEnemy, result } = ctx;
+  const effectTarget = effect.target || 'single';
+  const duration = effect.duration || 1;
+  
+  const applyStun = (t) => {
+    if (!t || t.currentHp <= 0) return;
+    
+    // 霸体检测
+    if (t.currentShield > 0 && !t.shieldBroken) {
+      result.logs.push({ text: `  🛡️ ${t.name} 霸体免疫眩晕！`, type: 'system' });
+      return;
+    }
+    
+    t.stunDuration = (t.stunDuration || 0) + duration;
+    if (!result.affectedTargets.includes(t)) result.affectedTargets.push(t);
+    result.logs.push({ text: `  → ${t.name} 被眩晕 ${duration} 回合！`, type: 'system' });
+  };
+  
+  switch (effectTarget) {
+    case 'single':
+      if (target) applyStun(target);
+      break;
+    case 'all_enemy':
+      // 我方使用时眩晕敌人，敌人使用时眩晕我方
+      const enemies = isEnemy ? [...battle.allies, ...battle.summons] : battle.enemies;
+      enemies.filter(e => e.currentHp > 0).forEach(applyStun);
+      break;
   }
+}
+
+// ==================== 迷迭香专属效果 ====================
+
+/**
+ * 余震效果
+ * 对主目标造成N次50%ATK伤害，范围化后对主目标+相邻敌人造成伤害
+ * @param {Object} ctx - 上下文对象
+ */
+export function executeAftershockEffect(ctx) {
+  const { effect, user, target, isEnemy, result } = ctx;
+  // 敌人不使用余震
+  if (isEnemy) return;
+  
+  const atk = getLocalUnitAtk(user);
+  const aftershockCount = user.aftershockCount || 1;  // 默认1次
+  const isAoe = user.aftershockAoe || false;  // 是否范围化
+  // 优先使用用户身上的眩晕概率，其次是效果自带的
+  const stunChance = user.attackStunChance || effect.stunChance || 0;
+  
+  // 获取所有存活敌人
+  const aliveEnemies = battle.enemies.filter(e => e.currentHp > 0);
+  if (aliveEnemies.length === 0) return;  // 没有存活敌人，不触发余震
+  
+  // 获取余震目标
+  let aftershockTargets = [];
+  
+  if (isAoe) {
+    // 范围化：如果原目标存活，攻击原目标+相邻；否则攻击所有存活敌人
+    if (target && target.currentHp > 0) {
+      const adjacent = getAdjacentEnemies(target);
+      aftershockTargets = [target, ...adjacent];
+    } else {
+      // 原目标死亡，攻击所有存活敌人
+      aftershockTargets = aliveEnemies;
+    }
+  } else {
+    // 非范围化：如果原目标存活，攻击原目标；否则攻击随机存活敌人
+    if (target && target.currentHp > 0) {
+      aftershockTargets = [target];
+    } else {
+      // 原目标死亡，选择随机存活敌人
+      //const randomTarget = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
+      //aftershockTargets = [randomTarget];
+      //result.logs.push({ text: `  ⚡ 原目标已死亡，余震转向 ${randomTarget.name}！`, type: 'system' });
+    }
+  }
+  
+  result.logs.push({ text: `  ⚡ 余震发动！（${aftershockCount}次${isAoe ? '，范围化' : ''}）`, type: 'system' });
+  
+  // 准备核心上下文 (ENVIRONMENT类型)
+  const coreCtx = {
+    user,
+    result,
+    sourceType: DMG_SOURCE.ENVIRONMENT,
+    isCrit: false,
+    isEnemy: false
+  };
+  
+  // 基础伤害值
+  const rawDamage = Math.floor(atk * effect.multiplier);
+
+  // 对每个目标造成N次余震伤害
+  for (let i = 0; i < aftershockCount; i++) {
+    aftershockTargets.forEach(t => {
+      if (t.currentHp <= 0) return;
+      
+      const outcome = applyDamageCore(t, rawDamage, coreCtx);
+      
+      if (outcome.dodged || outcome.absorbed || outcome.damage <= 0) return;
+      
+      const dmg = outcome.damage;
+      result.logs.push({ text: `  → ${t.name} 受到 ${dmg} 余震伤害！`, type: 'damage' });
+      
+      // 处理概率眩晕
+      if (stunChance > 0 && t.currentHp > 0) {
+        // 霸体检测
+        if (t.currentShield > 0 && !t.shieldBroken) {
+          result.logs.push({ text: `  🛡️ ${t.name} 霸体免疫余震眩晕！`, type: 'system' });
+        } else {
+          if (Math.random() < stunChance) {
+            t.stunDuration = (t.stunDuration || 0) + 1;
+            result.logs.push({ text: `  → 💫 ${t.name} 被眩晕 1 回合！`, type: 'system' });
+          }
+        }
+      }
+    });
+  }
+}
+
+/**
+ * 余震次数叠加（永久）
+ * @param {Object} ctx - 上下文对象
+ */
+export function executeAftershockCountBuff(ctx) {
+  const { effect, user, result } = ctx;
+  const count = effect.count || 2;
+  
+  user.aftershockCount = (user.aftershockCount || 1) + count;
+  
+  result.logs.push({
+    text: `  → ⚡ ${user.name} 余震次数 +${count}（当前${user.aftershockCount}次）！`,
+    type: 'system'
+  });
+}
+
+/**
+ * 余震范围化（永久）
+ * @param {Object} ctx - 上下文对象
+ */
+export function executeAftershockAoeBuff(ctx) {
+  const { user, result } = ctx;
+  
+  user.aftershockAoe = true;
+  
+  result.logs.push({
+    text: `  → ⚡ ${user.name} 余震范围化！攻击主目标及相邻敌人！`,
+    type: 'system'
+  });
+}
+
+/**
+ * 余震眩晕buff（永久）- 给攻击和余震添加眩晕概率
+ * @param {Object} ctx - 上下文对象
+ */
+export function executeAftershockStunBuff(ctx) {
+  const { effect, user, result } = ctx;
+  const stunChance = effect.stunChance || 0.2;
+  
+  // 设置用户的攻击眩晕概率
+  user.attackStunChance = stunChance;
+  
+  result.logs.push({
+    text: `  → 💫 ${user.name} 普攻和余震获得 ${Math.round(stunChance * 100)}% 眩晕概率！`,
+    type: 'system'
+  });
 }
 
 // ==================== 召唤系统相关效果 ====================
@@ -643,14 +910,27 @@ export function executeSplashDamage(ctx) {
   const enemies = battle.enemies.filter(e => e.currentHp > 0 && e !== target);
   if (enemies.length === 0) return;
   
+  // 溅射伤害基础值 (使用快照ATK)
   const splashDmg = Math.floor(atk * effect.multiplier);
   
   result.logs.push({ text: `  🔥 点燃爆炸！周围敌人受到溅射伤害：`, type: 'system' });
   
+  // 准备核心上下文 (ENVIRONMENT类型)
+  const coreCtx = {
+    user,
+    result,
+    sourceType: DMG_SOURCE.ENVIRONMENT,
+    isCrit: false,
+    isEnemy
+  };
+  
   enemies.forEach(enemy => {
-    const actualDmg = Math.max(1, Math.floor(splashDmg - enemy.def * 0.5));
-    enemy.currentHp -= actualDmg;
-    result.logs.push({ text: `  → ${enemy.name} 受到 ${actualDmg} 溅射伤害！`, type: 'damage' });
+    const outcome = applyDamageCore(enemy, splashDmg, coreCtx);
+    
+    if (outcome.dodged || outcome.absorbed || outcome.damage <= 0) return;
+    
+    const dmg = outcome.damage;
+    result.logs.push({ text: `  → ${enemy.name} 受到 ${dmg} 溅射伤害！`, type: 'damage' });
   });
 }
 
@@ -859,6 +1139,7 @@ export function checkPlayerDodge(target, result) {
   // 统一使用 0-1 概率
   const roll = Math.random();
   if (roll < target.dodgeChance) {
+    result.dodged = true; // 标记为已闪避
     result.logs.push({
       text: `  💫 ${target.name} 闪避了攻击！（圣域效果）`,
       type: 'system'

@@ -101,7 +101,7 @@ export const CHARACTER_DATA_RAW = {
     class: '先锋',  // 职业（召唤型先锋）
     hp: 800,
     atk: 150,
-    def: 40,
+    def: 55,
     spd: 95,
     summoner: true,  // 召唤流形
     skills: ['普攻', '渐进性润化', '生态耦合', '浅层非熵适应'],
@@ -113,11 +113,23 @@ export const CHARACTER_DATA_RAW = {
     class: '医疗',  // 职业
     hp: 750,
     atk: 180,
-    def: 40,
+    def: 60,
     spd: 80,
     healer: true,  // 医疗干员：普攻改为治疗
     skills: ['疗愈', '治疗强化·γ型', '法术护盾', '圣域'],
     voiceText: '丽兹，这是我真正的名字。除此之外的事情，我都不记得了......'
+  },
+  '迷迭香': {
+    id: 'char_391_rosmon',
+    rarity: 6,
+    class: '狙击',  // 职业
+    hp: 500,
+    atk: 255,
+    def: 60,
+    spd: 95,
+    skills: ['巨剑投射', '思维膨大', '末梢阻断', '"如你所愿"'],
+    voiceText: '你好博士，精英干员迷迭香来报到了。凯尔希批准了，你现在可以指挥我和我的小队。把我的能力用在对的地方吧，博士。对了，我很容易忘事，记得提醒我。',
+    artOffset: { x: 0, y: -200, z: 0 }
   },
 
   // ========== 5星 ==========

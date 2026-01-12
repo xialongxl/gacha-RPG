@@ -35,8 +35,8 @@ export const SmartAI = {
   trainingHistory: [],            // 训练历史
   
   // 模型版本
-  // V7: 添加嘲讽特征到我方单位编码
-  MODEL_VERSION: 7,
+  // V8: 添加行动条(Action Gauge)特征
+  MODEL_VERSION: 8,
   
   // ==================== 初始化 ====================
   
@@ -200,25 +200,259 @@ export const SmartAI = {
    * @param {Object} battleState - 战场状态（敌人视角）
    * @param {Object} action - 敌人的行动
    */
-  async recordEnemyAction(battleState, action) {
+  async recordEnemyAction(battleState, action, evaluationScore = 3) {
     if (!this.currentBattleId) return;
     
     this.currentTurn++;
     
-    // 计算敌人行动的即时奖励
-    const immediateReward = this.calculateEnemyReward(battleState, action);
+    // 计算基础奖励
+    const baseReward = this.calculateEnemyReward(battleState, action);
+    
+    // 融合评价分数 (Reward Shaping)
+    // 3分是及格，不奖不罚；5分奖励 +0.2；0分惩罚 -0.3
+    const scoreAdjustment = (evaluationScore - 3) * 0.1;
+    const finalReward = baseReward + scoreAdjustment;
     
     const record = {
       battleId: this.currentBattleId,
       turn: this.currentTurn,
       state: this.extractFeatures(battleState),
       action: this.encodeAction(action),
-      reward: immediateReward,
+      reward: finalReward,
       result: null,
       dataVersion: this.MODEL_VERSION
     };
     
     await SmartAI_DB.trainingData.add(record);
+  },
+
+  /**
+   * 评价敌人行动 (自我反思系统)
+   * @param {Object} skill - 使用的技能
+   * @param {Object} target - 目标单位
+   * @param {Object} result - 执行结果 (包含 logs, deaths 等)
+   * @returns {Object} { score, comments, stars }
+   */
+  evaluateAction(skill, target, result) {
+    // 🔍 调试评分数据
+    console.log("🔍 调试评分数据:", { skill, target, result });
+
+    let score = 3; // 初始 3 分 (及格)
+    let comments = [];
+    
+    if (!skill) return { score: 3, comments: "无行动", stars: "⭐⭐⭐" };
+
+    // 获取主要效果类型
+    const mainEffect = skill.effects && skill.effects.length > 0 ? skill.effects[0] : null;
+    const skillType = mainEffect ? mainEffect.type : 'unknown';
+    const skillTarget = skill.target || 'single';
+
+    // 0. 特殊技能保底 (召唤、变身等)
+    if (skillType === 'summon_buff' || skillType === 'team_energy' || skillType === 'sanctuary_mode' || skillType === 'team_temp_shield') {
+      score = 4;
+      comments.push("✨ 战术技能");
+    }
+
+    // 1. 治疗/Buff 类评价
+    // 1. Buff/强化 类评价 (优先于治疗判断，避免混合类型被误判)
+    if (skillType === 'buff' || skillType === 'team_buff_duration' || skillType === 'self_buff_then_attack' || skillType === 'summon_buff') {
+      score += 1;
+      
+      if (skillTarget === 'self' || skillType === 'self_buff_then_attack') {
+        comments.push("💪 自我强化");
+      } else if (skillTarget === 'all_ally' || skillTarget === 'all_ally_enemy' || skillType === 'team_buff_duration') {
+        score += 1; // 群体Buff价值更高
+        comments.push("🙌 全员强化");
+      } else {
+        comments.push("🛡️ 战术强化");
+      }
+    }
+
+    // 2. 治疗 类评价
+    if (skillType === 'heal') {
+      const totalHeal = result.totalHeal || 0;
+      
+      // 群体治疗
+      if (skillTarget === 'all_ally' || skillTarget === 'all_ally_enemy') {
+        if (totalHeal > 0) {
+          score += 2; // 群奶基础分高
+          if (totalHeal > 1000) {
+             score += 1;
+             comments.push("🌟 强力群疗");
+          } else {
+             comments.push("💚 群体治疗");
+          }
+        } else {
+          // 只有纯治疗技能才判无效，如果是混合技能(如带Buff)在上面已经加分了
+          score -= 6;
+          comments.push("🤡 无效群奶");
+        }
+      }
+      // 智能单体治疗 (ally_lowest)
+      else if (skillTarget === 'ally_lowest') {
+        if (totalHeal > 0) {
+          // 估算回血前比例
+          const prevHp = Math.max(0, target.currentHp - totalHeal);
+          const prevHpRatio = prevHp / target.maxHp;
+          
+          if (prevHpRatio < 0.3) {
+            score += 2;
+            comments.push("🚑 关键急救");
+          } else {
+            score += 1;
+            comments.push("💚 有效治疗");
+          }
+        } else {
+          score -= 6;
+          comments.push("🤡 满血强奶");
+        }
+      }
+    }
+    
+    // 2. 攻击/伤害 类评价
+    if (skillType === 'damage' || skillType === 'debuff' || skillType === 'splash_damage' || skillType === 'aftershock') {
+      
+      const totalDamage = result.totalDamage || 0;
+      
+      // AOE/群体攻击
+      // 补充：dual (双目标)
+      if (skillTarget === 'all' || skillTarget === 'all_enemy' || skillTarget === 'random3' || skillTarget === 'random6' || skillTarget === 'random2' || skillTarget === 'dual') {
+        if (totalDamage > 0) {
+          score += 1;
+          
+          // 补充：AOE 多目标奖励
+          if (result.hitCount >= 2) {
+            const multiHitBonus = (result.hitCount - 1) * 0.5;
+            score += multiHitBonus;
+            comments.push(`🎯 命中${result.hitCount}人(+${multiHitBonus})`);
+          }
+
+          // 根据伤害量额外加分 (每 500 点伤害 +0.5 分，最多 +2)
+          const damageBonus = Math.min(2, Math.floor(totalDamage / 500) * 0.5);
+          if (damageBonus > 0) {
+             score += damageBonus;
+             comments.push(`💥 AOE爆发(${totalDamage})`);
+          } else {
+             comments.push("⚔️ 群体攻击");
+          }
+        } else {
+          score -= 1;
+          comments.push("💨 AOE挥空");
+        }
+      }
+      // 单体攻击
+      else {
+        const isTaunted = target && target.buffs && target.buffs.taunt;
+        
+        if (isTaunted) {
+          comments.push("🛡️ 被嘲讽强迫");
+        } else if (target) {
+          // 目标是召唤物
+          if (target.isSummon) {
+             const killed = result.deaths && (result.deaths.includes(target) || target.currentHp <= 0);
+             if (!killed) {
+               score -= 2;
+               comments.push("📉 殴打召唤物");
+             }
+          }
+          
+          // 伤害有效性 (修正：仅当技能本该造成伤害小于等于5时才扣分)
+          const isDamageSkill = skillType === 'damage' || skillType === 'splash_damage' || skillType === 'aftershock';
+          
+          if (isDamageSkill && totalDamage <= 5) {
+            if (result.dodged) {
+              score -= 1;
+              comments.push("💨 惨遭闪避");
+            } else {
+              score -= 2;
+              comments.push("🤡 刮痧师傅");
+            }
+          } else if (totalDamage > 0) {
+            // 区分破盾和有效命中
+            if (result.tempShieldBroken) {
+              score += 1; // 破盾额外加分
+              comments.push("💥 击碎护盾！");
+            } else if (result.hitShield) {
+              comments.push("🛡️ 破盾攻击");
+            } else {
+              comments.push("⚔️ 有效命中");
+            }
+          }
+
+          // 优先攻击高价值目标 (基于职业优先级)
+          const charData = CHARACTER_DATA[target.name];
+          const targetClass = charData ? charData.class : target.class;
+          
+          // 补充：明确的高价值目标 (Medic, Supporter, High ATK)
+          if (targetClass === 'Medic' || targetClass === 'Supporter' || (target.atk > 1000)) {
+            score += 1;
+            comments.push("🎯 锁定高威胁/核心");
+          }
+          
+          if (targetClass && CLASS_PRIORITY_REWARD[targetClass]) {
+            const priority = CLASS_PRIORITY_REWARD[targetClass];
+            // 医疗(6), 先锋(5), 辅助(5), 术师(4) -> 高价值
+            if (priority >= 4) {
+              score += 1;
+              comments.push(`🎯 优先击杀${targetClass}`);
+            }
+            // 狙击(3), 特种(3) -> 中等价值
+            else if (priority === 3) {
+              score += 0.5;
+              comments.push(`🏹 击杀${targetClass}`);
+            }
+            // 近卫(2), 重装(1) -> 低优先级 (通常是肉盾)
+            // 不加分，也不扣分，除非有更好的选择 (难以判断)
+          }
+          
+          // 溢出伤害 (杀鸡用牛刀)
+          // 仅当伤害远超目标最大生命值(200%)时才判为溢出，避免误判满血秒杀
+          if (totalDamage > target.maxHp * 2.0 && target.currentHp <= 0) {
+             score -= 1;
+             comments.push("🔪 杀鸡用牛刀");
+          }
+        }
+      }
+      
+      // 成功击杀 (任意目标)
+      if (result.deaths && result.deaths.length > 0) {
+        score += 2;
+        comments.push("💀 成功击杀");
+      }
+      
+      // Debuff/控制
+      if (skillType === 'debuff' || skillType === 'stun' || skillType === 'debuff_duration') {
+         // 简单判断：只要使用了控制技能，就加分
+         score += 1;
+         comments.push("🕸️ 施加控制");
+      }
+    }
+    
+    // 3. v6.0 时间轴机制 (TTA/Action Gauge)
+    if (target && (skillType === 'stun' || (skill.effects && skill.effects.some(e => e.type === 'stun')))) {
+      const tta = Math.max(0, (10000 - (target.actionGauge || 0)) / 100);
+      if (tta < 20) {
+        // 目标即将行动 (TTA小)
+        score += 2;
+        comments.push("⚡ 压起身打断！");
+      } else if (tta > 80) {
+        // 目标刚行动完 (TTA大)
+        score -= 1;
+        comments.push("💤 控制时机不佳");
+      }
+    }
+    
+    // 限制分数范围 0-5
+    score = Math.max(0, Math.min(5, score));
+    
+    // 生成星级
+    const stars = "⭐".repeat(Math.round(score)) || "🤡";
+    
+    return {
+      score,
+      comments: comments.length > 0 ? comments.join(' | ') : "🤔 普通操作",
+      stars
+    };
   },
   
   /**
@@ -362,7 +596,7 @@ export const SmartAI = {
   extractFeatures(battleState) {
     const features = [];
     
-    // 我方单位特征 (8 * 12 = 96) - V7: 添加嘲讽特征
+    // 我方单位特征 (8 * 13 = 104) - V8: 添加行动条特征
     const maxAllies = 8;
     const allies = [...(battleState.allies || []), ...(battleState.summons || [])];
     
@@ -389,14 +623,15 @@ export const SmartAI = {
           (unit.buffAtkPercent || 0),
           (unit.buffDef || 0) / 100,
           (unit.skillUseCount || 0) / 10,
-          hasTaunt  // V7: 嘲讽特征
+          hasTaunt,  // V7: 嘲讽特征
+          (unit.actionGauge || 0) / 10000 // V8: 行动条特征
         );
       } else {
-        for (let j = 0; j < 12; j++) features.push(0);  // V7: 12个特征
+        for (let j = 0; j < 13; j++) features.push(0);  // V8: 13个特征
       }
     }
     
-    // 敌方单位特征 (4 * 31 = 124) - V6: 添加职业 one-hot
+    // 敌方单位特征 (4 * 32 = 128) - V8: 添加行动条特征
     const maxEnemies = 4;
     const enemies = battleState.enemies || [];
     
@@ -410,7 +645,8 @@ export const SmartAI = {
           unit.spd / 150,
           unit.shieldBroken ? 1 : 0,
           (unit.currentShield || 0) / (unit.shield || 1),
-          unit.stunDuration > 0 ? 1 : 0
+          unit.stunDuration > 0 ? 1 : 0,
+          (unit.actionGauge || 0) / 10000 // V8: 行动条特征
         );
         
         // 词缀 one-hot (13个)
@@ -433,21 +669,22 @@ export const SmartAI = {
           features.push(unitClass === className ? 1 : 0);
         }
       } else {
-        // 空位填充: 7 + 13 + 3 + 8 = 31
-        for (let j = 0; j < 31; j++) features.push(0);
+        // 空位填充: 8 + 13 + 3 + 8 = 32
+        for (let j = 0; j < 32; j++) features.push(0);
       }
     }
     
-    // 当前行动单位 (3)
+    // 当前行动单位 (4) - V8: 添加行动条特征
     const current = battleState.currentUnit;
     if (current) {
       features.push(
         current.currentHp / current.maxHp,
         (current.energy || 0) / (current.maxEnergy || 100),
-        current.isEnemy ? 1 : 0
+        current.isEnemy ? 1 : 0,
+        (current.actionGauge || 0) / 10000 // V8: 行动条特征
       );
     } else {
-      features.push(0, 0, 0);
+      features.push(0, 0, 0, 0);
     }
     
     // 回合数 + 层数 (2)
@@ -756,6 +993,10 @@ export const SmartAI = {
   
   // 清除所有数据
   async clearAllData() {
+    const battleCount = await SmartAI_DB.battles.count();
+    const dataCount = await SmartAI_DB.trainingData.count();
+    const totalCount = battleCount + dataCount;
+
     await SmartAI_DB.battles.clear();
     await SmartAI_DB.trainingData.clear();
     await SmartAI_DB.modelParams.clear();
@@ -774,7 +1015,7 @@ export const SmartAI = {
     this.epsilon = this.config.EPSILON_START;
     this.trainingHistory = [];
     
-    console.log('🗑️ 所有AI数据已清除');
+    console.log(`🗑️ 所有AI数据已清除（共清除${totalCount}条AI数据）`);
   },
   
   // 导出数据（调试用）

@@ -352,7 +352,7 @@ export const SKILL_EFFECTS = {
     cost: 20,
     gain: 0,
     target: 'self',
-    desc: '消耗20能量，自身攻击力+80%，速度+30（可叠加）',
+    desc: '消耗20能量，自身ATK+80%，速度+30（可叠加）',
     effects: [
       { type: 'buff', stat: 'atk', multiplier: 0.8 },
       { type: 'buff', stat: 'spd', value: 30 }
@@ -362,7 +362,7 @@ export const SKILL_EFFECTS = {
     cost: 60,
     gain: 0,
     target: 'random3',
-    desc: '消耗60能量，攻击力+60%，并同时攻击3个敌方单位',
+    desc: '消耗60能量，自身ATK+60%，并同时攻击3个敌方单位',
     effects: [
       { type: 'self_buff_then_attack', multiplier: 0.6 },
       { type: 'damage', multiplier: 1.0 }
@@ -372,10 +372,10 @@ export const SKILL_EFFECTS = {
     cost: 80,
     gain: 0,
     target: 'all',
-    desc: '消耗80能量，全体队友回复30%攻击力的HP，敌人全体减速80%（持续2回合）',
+    desc: '消耗80能量，全体队友回复20%攻击力的HP，敌人全体SPD-80%（持续3回合）',
     effects: [
       { type: 'heal', multiplier: 0.2, target: 'all_ally' },
-      { type: 'debuff_duration', stat: 'spd', multiplier: 0.3, target: 'all_enemy', duration: 2 }
+      { type: 'debuff_duration', stat: 'spd', multiplier: 0.8, target: 'all_enemy', duration: 3 }
     ]
   },
 
@@ -416,6 +416,51 @@ export const SKILL_EFFECTS = {
       { type: 'owner_buff', buffType: 'atkMultiplier', value: 0.5 },
       { type: 'summon_buff', buffType: 'atkMultiplier', value: 0.5 },
       { type: 'summon_buff', buffType: 'stunOnHit', value: true, duration: 2 }
+    ]
+  },
+
+  // ========== 迷迭香专属技能 ==========
+  '巨剑投射': {
+    cost: 0,
+    gain: 30,
+    target: 'single',
+    desc: '专属普攻，100%ATK + 余震(50%ATK)',
+    effects: [
+      { type: 'damage', multiplier: 1.0 },
+      { type: 'aftershock', multiplier: 0.5 }
+    ]
+  },
+  '思维膨大': {
+    cost: 20,
+    gain: 0,
+    target: 'self',
+    desc: '消耗20能量，自身ATK+180%（可叠加）',
+    effects: [
+      { type: 'buff', stat: 'atk', multiplier: 1.8 }
+    ]
+  },
+  '末梢阻断': {
+    cost: 50,
+    gain: 0,
+    target: 'self',
+    desc: '消耗50能量，ATK+55%（可叠加），余震额外+2次（可叠加），余震范围化，普攻和余震均有20%概率造成眩晕',
+    effects: [
+      { type: 'buff', stat: 'atk', multiplier: 0.55 },
+      { type: 'aftershock_count_buff', count: 2 },
+      { type: 'aftershock_aoe_buff' },
+      { type: 'aftershock_stun_buff', stunChance: 0.2 }
+    ]
+  },
+  '"如你所愿"': {
+    cost: 80,
+    gain: 0,
+    target: 'dual',
+    desc: '消耗80能量，ATK+75%（可叠加），同时攻击2目标，敌方全体眩晕1回合，且附加DEF-50%（持续2回合）',
+    effects: [
+      { type: 'buff', stat: 'atk', multiplier: 0.75 },
+      { type: 'damage', multiplier: 1.0 },
+      { type: 'stun', target: 'all_enemy', duration: 1 },
+      { type: 'debuff_duration', stat: 'def', multiplier: 0.5, duration: 2, target: 'all_enemy' }
     ]
   },
 
@@ -547,3 +592,11 @@ export const SKILL_EFFECTS = {
     ]
   }
 };
+
+// ==================== 调试接口挂载 ====================
+window.SkillSystem = {
+  SKILL_EFFECTS,
+  LEADER_BONUS,
+  getSkill: (name) => SKILL_EFFECTS[name]
+};
+console.log('🔧 SkillSystem debug interface mounted to window.SkillSystem');

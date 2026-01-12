@@ -370,13 +370,18 @@ export function initShopPageObserver() {
   if (shopPage) {
     // 使用MutationObserver监听class变化
     const observer = new MutationObserver((mutations) => {
+      let shouldInit = false;
       mutations.forEach((mutation) => {
         if (mutation.attributeName === 'class') {
           if (shopPage.classList.contains('active')) {
-            ShopSystem.init();
+            shouldInit = true;
           }
         }
       });
+      
+      if (shouldInit) {
+        ShopSystem.init();
+      }
     });
     
     observer.observe(shopPage, { attributes: true });

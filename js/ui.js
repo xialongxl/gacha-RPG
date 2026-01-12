@@ -261,7 +261,7 @@ function calculateSmartScaleAndPosition(bounds, containerWidth, containerHeight)
   let adjustedBounds = bounds;
   
   // 智能选择缩放策略
-  if (aspectRatio > 1.2) {
+  if (aspectRatio > 1.4) {
     // 宽高比大于1.2：宽度异常大（可能有横向特效）
     // 假设角色主体宽度只有bounds宽度的60%，高度只有70%
     // 用调整后的尺寸计算缩放
@@ -307,7 +307,7 @@ function calculateSmartScaleAndPosition(bounds, containerWidth, containerHeight)
   // 计算定位
   let position;
   
-  if (aspectRatio > 1.2 || aspectRatio < 0.4) {
+  if (aspectRatio > 1.4 || aspectRatio < 0.4) {
     // 宽高比异常时，直接将Spine原点放在容器底部中心
     // Spine原点通常在角色脚底
     position = {
@@ -316,14 +316,14 @@ function calculateSmartScaleAndPosition(bounds, containerWidth, containerHeight)
     };
     console.log('异常宽高比定位：底部中心');
   } else {
-    // 正常情况，中心对齐
+    // 正常情况，x轴居中，y轴底部对齐
+    // x轴：基于bounds计算居中位置
     const boundsCenter = {
-      x: (bounds.x + bounds.width / 2) * scale,
-      y: (bounds.y + bounds.height / 2) * scale
+      x: (bounds.x + bounds.width / 2) * scale
     };
     position = {
       x: containerWidth / 2 - boundsCenter.x,
-      y: containerHeight / 2 - boundsCenter.y
+      y: containerHeight * 0.995  // 底部对齐
     };
   }
   

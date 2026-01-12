@@ -649,6 +649,10 @@ export function toggleBGMPlayer() {
   if (panel) panel.classList.toggle('active');
 }
 
+// 挂载到全局
+window.toggleBGMPlayer = toggleBGMPlayer;
+window.BGMPlayer = BGMPlayer;
+
 // ==================== 场景BGM切换辅助函数 ====================
 
 /**

@@ -46,8 +46,17 @@ const DEFAULT_STATE = {
   reviveTickets: 0,         // 复活券
   relayTickets: 0,          // 接力券
   // 无尽模式进度（现在存入存档，确保可以恢复）
-  relayFloor: null,         // 接力券记录的层数
-  maxFloorReached: 0        // 无尽模式历史最高层数
+  relayFloor: null,         // 接力券记录的层数 (旧版兼容保留)
+  maxFloorReached: 0,       // 无尽模式历史最高层数
+  // 新版无尽模式实时进度
+  endlessProgress: {
+    floor: 0,               // 当前到达层数
+    buffs: [],              // 当前拥有的强化
+    active: false           // 是否有未完成的进度
+  },
+  // 扫荡系统
+  sweepDailyCount: 0,       // 今日已扫荡次数
+  sweepLastResetDate: ""    // 上次重置日期 (格式: "YYYY-MM-DD")
 };
 
 // 当前游戏状态
@@ -62,6 +71,7 @@ export let battle = {
   summons: [],
   turnOrder: [],
   currentTurn: 0,
+  currentUnit: null,
   selectedSkill: null,
   log: [],
   isEndless: false,
@@ -180,6 +190,80 @@ class GameStore {
 
   getRelayTickets() {
     return state.relayTickets || 0;
+  }
+
+  // --- 扫荡系统管理 ---
+
+  /**
+   * 检查并重置每日扫荡次数
+   */
+  checkSweepDailyReset() {
+    const today = new Date().toISOString().split('T')[0]; // "YYYY-MM-DD"
+    if (state.sweepLastResetDate !== today) {
+      state.sweepDailyCount = 0;
+      state.sweepLastResetDate = today;
+      this.save();
+    }
+  }
+
+  /**
+   * 获取今日剩余扫荡次数
+   * @returns {number} 剩余次数
+   */
+  getSweepRemaining() {
+    this.checkSweepDailyReset();
+    const maxCount = CONFIG.SWEEP?.maxDailyCount || 3;
+    return maxCount - (state.sweepDailyCount || 0);
+  }
+
+  /**
+   * 获取今日已使用扫荡次数
+   * @returns {number} 已使用次数
+   */
+  getSweepUsedCount() {
+    this.checkSweepDailyReset();
+    return state.sweepDailyCount || 0;
+  }
+
+  /**
+   * 获取每日最大扫荡次数
+   * @returns {number} 最大次数
+   */
+  getSweepMaxCount() {
+    return CONFIG.SWEEP?.maxDailyCount || 3;
+  }
+
+  /**
+   * 消耗一次扫荡次数
+   * @returns {boolean} 是否成功消耗
+   */
+  consumeSweepCount() {
+    this.checkSweepDailyReset();
+    const maxCount = CONFIG.SWEEP?.maxDailyCount || 3;
+    if ((state.sweepDailyCount || 0) < maxCount) {
+      state.sweepDailyCount = (state.sweepDailyCount || 0) + 1;
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * 购买额外扫荡次数（增加每日上限）
+   * @returns {boolean} 是否购买成功
+   */
+  buySweepCount() {
+    const price = CONFIG.SWEEP?.buyPrice || 500;
+    if ((state.endlessCoin || 0) >= price) {
+      state.endlessCoin -= price;
+      // 购买后直接增加一次可用次数（减少已用次数）
+      if ((state.sweepDailyCount || 0) > 0) {
+        state.sweepDailyCount -= 1;
+      }
+      this.save();
+      return true;
+    }
+    return false;
   }
 
   // --- 抽卡相关 ---
@@ -666,6 +750,7 @@ export function resetBattle() {
     summons: [],
     turnOrder: [],
     currentTurn: 0,
+    currentUnit: null,
     selectedSkill: null,
     log: [],
     isEndless: false,

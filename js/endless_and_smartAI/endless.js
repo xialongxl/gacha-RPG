@@ -5,12 +5,13 @@ console.log('🔄 无尽模式模块加载中...');
 import { CHARACTER_DATA } from '../data.js';
 import { state, store, GameDB, battle, resetBattle } from '../state.js';
 import { CONFIG, applyPotentialBonus, canBreakthrough, getDisplayRarity } from '../config.js';
-import { calculateTurnOrder, nextTurn } from '../battle.js';
+import { nextTurn } from '../battle.js';
 import { BattleRenderer } from '../battleRenderer.js';
 import { showModal, closeModal, updateResourceUI, addBattleLog, closeBattleField } from '../ui.js';
 import { playEndlessBGM, playMainBGM } from '../audio.js';
 import { SmartAI } from './smartAI.js';
 import { SmartAI_Battle } from './smartAI_battle.js';
+import { SmartTeamBuilder } from './smartAI_teamBuilder.js';
 import { SummonSystem } from '../summon.js';
 import { getEnemyDecision } from '../enemyAI.js';
 
@@ -19,10 +20,18 @@ export const EndlessMode = {
   active: false,
   currentFloor: 0,
   maxFloorReached: 0,
-  relayFloor: null,  // 接力记录的层数
+  savedProgress: null, // 保存的进度 { floor, buffs, active }
   currentStage: null,
   totalRewards: { gold: 0, tickets: 0 },  // 累计奖励
   currentBuffs: [],  // 当局获得的强化buff
+  
+  // 扫荡状态
+  sweepActive: false,
+  sweepMode: null,        // 'fast' 极速扫荡
+  sweepCurrentFloor: 0,
+  sweepTotalReward: { gold: 0, tickets: 0, endlessCoin: 0 },
+  sweepCancelled: false,
+  sweepTimer: null,
   
   // 配置
   config: {
@@ -70,14 +79,32 @@ export const EndlessMode = {
     console.log('🏰 无尽模式初始化完成，历史最高:', this.maxFloorReached, '层');
   },
   
-  // 读取进度（优先从 state 存档读取，兼容旧数据从 settings 迁移）
+  // 读取进度
   async loadProgress() {
     try {
-      // 优先从 state 存档读取（新架构）
-      if (state.relayFloor !== undefined || state.maxFloorReached !== undefined) {
+      // 优先从 state 存档读取
+      if (state.maxFloorReached !== undefined) {
         this.maxFloorReached = state.maxFloorReached || 0;
-        this.relayFloor = state.relayFloor || null;
-        console.log('📂 从存档读取无尽进度: maxFloor=' + this.maxFloorReached + ', relay=' + this.relayFloor);
+        
+        // 读取新版进度
+        if (state.endlessProgress) {
+          this.savedProgress = state.endlessProgress;
+        } else {
+          this.savedProgress = { floor: 0, buffs: [], active: false };
+        }
+
+        // 兼容旧版 relayFloor
+        if (state.relayFloor) {
+          console.log('📦 迁移旧版接力进度:', state.relayFloor);
+          this.savedProgress = {
+            floor: state.relayFloor,
+            buffs: [],
+            active: true
+          };
+          state.relayFloor = null; // 清除旧数据
+        }
+
+        console.log('📂 读取无尽进度:', this.savedProgress);
         return;
       }
       
@@ -85,40 +112,46 @@ export const EndlessMode = {
       const saved = await GameDB.settings.get('endless_progress');
       if (saved && saved.value) {
         this.maxFloorReached = saved.value.maxFloorReached || 0;
-        this.relayFloor = saved.value.relayFloor || null;
+        // 旧版迁移
+        if (saved.value.relayFloor) {
+            this.savedProgress = {
+                floor: saved.value.relayFloor,
+                buffs: [],
+                active: true
+            };
+        }
         
         // 迁移到 state
-        state.maxFloorReached = this.maxFloorReached;
-        state.relayFloor = this.relayFloor;
-        store.save();  // 触发自动存档
-        
-        console.log('📦 从旧设置迁移无尽进度到存档: maxFloor=' + this.maxFloorReached + ', relay=' + this.relayFloor);
+        this.saveProgress();
       }
     } catch (e) {
       console.error('读取无尽模式进度失败:', e);
       this.maxFloorReached = state.maxFloorReached || 0;
-      this.relayFloor = state.relayFloor || null;
+      this.savedProgress = { floor: 0, buffs: [], active: false };
     }
   },
   
-  // 保存进度（同时保存到 state 存档和 settings 以保持兼容性）
+  // 保存进度
   async saveProgress() {
     try {
-      // 保存到 state（主要存储，会触发自动存档）
       state.maxFloorReached = this.maxFloorReached;
-      state.relayFloor = this.relayFloor;
+      
+      // 更新 savedProgress
+      if (this.active) {
+          // 战斗中，保存当前状态
+          this.savedProgress = {
+              floor: this.currentFloor,
+              buffs: this.currentBuffs,
+              active: true
+          };
+      } else if (!this.savedProgress) {
+          this.savedProgress = { floor: 0, buffs: [], active: false };
+      }
+      
+      state.endlessProgress = this.savedProgress;
       store.save();  // 触发自动存档
       
-      // 同时保存到 settings（兼容性，可选）
-      await GameDB.settings.put({
-        id: 'endless_progress',
-        value: {
-          maxFloorReached: this.maxFloorReached,
-          relayFloor: this.relayFloor
-        }
-      });
-      
-      console.log('💾 无尽进度已保存: maxFloor=' + this.maxFloorReached + ', relay=' + this.relayFloor);
+      console.log('💾 无尽进度已保存:', this.savedProgress);
     } catch (e) {
       console.error('保存无尽模式进度失败:', e);
     }
@@ -133,9 +166,9 @@ export const EndlessMode = {
       return;
     }
     
-    // 检查是否有接力记录
-    if (this.relayFloor && this.relayFloor > 0) {
-      this.showRelayConfirmModal();
+    // 检查是否有中断的进度
+    if (this.savedProgress && this.savedProgress.active && this.savedProgress.floor > 0) {
+      this.showContinueConfirmModal();
       return;
     }
     
@@ -144,11 +177,11 @@ export const EndlessMode = {
   },
   
   // 开始无尽模式（支持指定起始层）
-  beginEndlessMode(startFloor = 0) {
+  beginEndlessMode(startFloor = 0, initialBuffs = []) {
     this.active = true;
     this.currentFloor = startFloor;
     this.totalRewards = { gold: 0, tickets: 0 };  // 重置累计奖励
-    this.currentBuffs = [];  // 重置强化buff
+    this.currentBuffs = initialBuffs || [];  // 恢复或重置强化buff
     
     // 开始记录战斗数据（给SmartAI）
     const team = state.team.filter(c => c !== null);
@@ -161,99 +194,94 @@ export const EndlessMode = {
     this.nextFloor();
   },
   
-  // 显示接力确认弹窗
-  showRelayConfirmModal() {
+  // 显示继续挑战确认弹窗
+  showContinueConfirmModal() {
+    const progress = this.savedProgress;
+    const buffCount = progress.buffs ? progress.buffs.length : 0;
     const relayCount = store.getRelayTickets();
+    const hasBuffs = buffCount > 0;
     
+    let buttonsHtml = '';
+    
+    if (hasBuffs) {
+        // 有保存的Buff，需要选择是否消耗接力券恢复
+        const canAfford = relayCount >= 1;
+        buttonsHtml = `
+            <button id="continue-with-buffs" class="btn-primary" ${canAfford ? '' : 'disabled'}>
+                消耗1券恢复强化 (${relayCount}/1)
+            </button>
+            <button id="continue-without-buffs" class="btn-secondary">
+                不恢复强化直接继续
+            </button>
+            <button id="continue-no" class="btn-danger" style="margin-top:10px;">放弃进度</button>
+        `;
+    } else {
+        // 无Buff，直接继续
+        buttonsHtml = `
+            <button id="continue-simple" class="btn-primary">继续挑战</button>
+            <button id="continue-no" class="btn-secondary">放弃并重新开始</button>
+        `;
+    }
+
     const content = `
-      <div class="relay-confirm">
-        <p style="font-size:18px;">🔗 检测到接力记录！</p>
-        <div class="relay-info" style="margin:15px 0;padding:10px;background:rgba(255,255,255,0.1);border-radius:8px;">
-          <p>上次撤退层数: 第 <b style="color:#ffd700;">${this.relayFloor}</b> 层</p>
-          <p>可从第 <b style="color:#90ee90;">${this.relayFloor + 1}</b> 层继续挑战</p>
+      <div class="continue-confirm">
+        <p style="font-size:18px;">📂 发现中断的挑战进度</p>
+        <div class="progress-info" style="margin:15px 0;padding:10px;background:rgba(255,255,255,0.1);border-radius:8px;">
+          <p>上次通关: 第 <b style="color:#ffd700;">${progress.floor}</b> 层</p>
+          <p>继续挑战: 第 <b style="color:#ffd700;">${progress.floor + 1}</b> 层</p>
+          ${hasBuffs ? `<p>保存强化: <b style="color:#90ee90;">${buffCount}</b> 个</p>` : '<p style="color:#aaa;">无保存的强化</p>'}
         </div>
-        <hr style="border-color:rgba(255,255,255,0.2);margin:15px 0;">
-        <p>🎫 接力券: <b style="color:#ffd700;">${relayCount}</b> 张</p>
-        <p style="color:#90ee90;font-size:13px;">使用接力将消耗 1 张接力券</p>
-        <div class="endless-buttons" style="margin-top:20px;">
-          <button id="relay-use" class="btn-primary">使用接力券（消耗1张）</button>
-          <button id="relay-skip" class="btn-secondary">从第1层开始</button>
-          <button id="relay-cancel" class="btn-secondary">取消</button>
+        <div class="endless-buttons" style="margin-top:20px;display:flex;flex-direction:column;gap:10px;">
+          ${buttonsHtml}
         </div>
       </div>
     `;
     
-    showModal('🔗 接力确认', content, false);
+    showModal('📂 继续挑战', content, false);
     
     setTimeout(() => {
-      document.getElementById('relay-use')?.addEventListener('click', async () => {
-        // 消耗接力券
-        const success = await store.consumeRelayTicket();
-        if (!success) {
-          alert('接力券不足！');
-          return;
-        }
-        
-        const startFloor = this.relayFloor;
-        
-        // 清除接力记录
-        this.relayFloor = null;
-        await this.saveProgress();
-        
-        closeModal();
-        
-        addBattleLog(`🔗 使用接力！从第 ${startFloor + 1} 层开始！`, 'system');
-        this.beginEndlessMode(startFloor);
-      });
+      // 绑定事件
+      if (hasBuffs) {
+          document.getElementById('continue-with-buffs')?.addEventListener('click', () => {
+              if (store.consumeRelayTicket()) {
+                  closeModal();
+                  addBattleLog(`🎫 消耗接力券，恢复 ${buffCount} 个强化！`, 'system');
+                  this.beginEndlessMode(progress.floor, progress.buffs);
+              } else {
+                  alert('接力券不足！');
+              }
+          });
+          
+          document.getElementById('continue-without-buffs')?.addEventListener('click', () => {
+              if (confirm('确定不恢复强化吗？保存的强化将被清空。')) {
+                  closeModal();
+                  addBattleLog(`⚠️ 未使用接力券，强化已清空`, 'system');
+                  this.beginEndlessMode(progress.floor, []); // 空buff
+              }
+          });
+      } else {
+          document.getElementById('continue-simple')?.addEventListener('click', () => {
+              closeModal();
+              this.beginEndlessMode(progress.floor, []);
+          });
+      }
       
-      document.getElementById('relay-skip')?.addEventListener('click', () => {
-        // 不使用接力，显示清除确认弹窗
+      document.getElementById('continue-no')?.addEventListener('click', () => {
         closeModal();
-        this.showClearRelayConfirmModal();
-      });
-      
-      document.getElementById('relay-cancel')?.addEventListener('click', () => {
-        closeModal();
+        this.showRestartConfirmModal();
       });
     }, 100);
   },
-  
-  // 显示清除接力记录确认弹窗
-  showClearRelayConfirmModal() {
-    const content = `
-      <div class="clear-relay-confirm">
-        <p style="font-size:18px;color:#ff6b6b;">⚠️ 确定要清除接力记录吗？</p>
-        <div class="relay-info" style="margin:15px 0;padding:10px;background:rgba(255,255,255,0.1);border-radius:8px;">
-          <p>当前记录: 第 <b style="color:#ffd700;">${this.relayFloor}</b> 层</p>
-          <p style="color:#888;font-size:12px;">清除后将无法恢复</p>
-        </div>
-        <div class="endless-buttons" style="margin-top:20px;">
-          <button id="clear-confirm" class="btn-danger">确认清除并开始</button>
-          <button id="clear-cancel" class="btn-secondary">返回</button>
-        </div>
-      </div>
-    `;
-    
-    showModal('🗑️ 清除确认', content, false);
-    
-    setTimeout(() => {
-      document.getElementById('clear-confirm')?.addEventListener('click', async () => {
-        // 清除接力记录
-        this.relayFloor = null;
-        await this.saveProgress();
-        
-        closeModal();
-        
-        // 从第1层开始
-        this.beginEndlessMode(0);
-      });
-      
-      document.getElementById('clear-cancel')?.addEventListener('click', () => {
-        closeModal();
-        // 返回接力确认弹窗
-        this.showRelayConfirmModal();
-      });
-    }, 100);
+
+  // 放弃进度确认
+  showRestartConfirmModal() {
+      if (confirm('确定要放弃当前进度吗？层数和强化将全部清空！')) {
+          this.savedProgress = { floor: 0, buffs: [], active: false };
+          this.saveProgress();
+          this.beginEndlessMode(0);
+      } else {
+          this.showContinueConfirmModal();
+      }
   },
   
   // ==================== 下一层 ====================
@@ -301,6 +329,20 @@ export const EndlessMode = {
     const scale = 1 + (floor - 1) * this.config.ENEMY_SCALE_PER_FLOOR;
     
     let enemies = [];
+
+    // 30层以上启用智能组队 (非BOSS层)
+    if (floor >= 30 && !isBossFloor) {
+      try {
+        const playerTeam = state.team.filter(c => c !== null).map(name => CHARACTER_DATA[name]);
+        const smartEnemies = SmartTeamBuilder.generateCounterTeam(floor, playerTeam, this.enemyTemplates);
+        if (smartEnemies && smartEnemies.length > 0) {
+          console.log(`🧠 第${floor}层: 智能组队系统已激活`);
+          return smartEnemies;
+        }
+      } catch (e) {
+        console.error('智能组队生成失败，回退到普通生成:', e);
+      }
+    }
     
     if (isBossFloor) {
       // BOSS层
@@ -715,7 +757,6 @@ export const EndlessMode = {
     }
     addBattleLog('⚔️ 战斗开始！', 'system');
     
-    calculateTurnOrder();
     battle.currentTurn = 0;
     
     // renderBattleInitial();
@@ -762,12 +803,45 @@ export const EndlessMode = {
   // 胜利
   async onVictory() {
     if (!this.active) return;
+
+    // 记录智能组队战斗结果 (30层以上)
+    if (this.currentFloor >= 30) {
+      const playerTeam = battle.allies || [];
+      const enemyTeam = battle.enemies || [];
+      // 传入原始数据结构可能更稳妥，这里先传battle对象，SmartTeamBuilder那边需要适配一下
+      // 为了保持一致性，我们重新构造一下简单对象
+      // 但注意：recordMatchResult 需要的是特征分析，用 battle.allies 里的数据（包含 stats）也是可以的，只要 analyzePlayerTeam 能处理
+      // 检查 analyzePlayerTeam: 它需要 char.class, char.skills, char.summoner, char.hp/atk/def/spd
+      // battle.allies 里的对象有这些属性吗？
+      // battle.allies 对象结构在 startBattle 中定义：
+      //   name, rarity, hp, atk, def, spd, skills, isSummoner...
+      //   它缺少 'class' 属性！
+      //   所以我们需要回溯到 CHARACTER_DATA
+      
+      const playerTeamData = battle.allies.filter(a => !a.isSummon).map(a => {
+        const original = CHARACTER_DATA[a.name];
+        return original || a; // 优先用原始数据获取 class，如果找不到（可能是召唤物）则用 a
+      });
+      
+      SmartTeamBuilder.recordMatchResult(playerTeamData, enemyTeam, true);
+    }
     
     const rewards = this.currentStage.rewards;
     
-    // 累加奖励（不发放）
-    this.totalRewards.gold += rewards.gold;
-    this.totalRewards.tickets += rewards.tickets;
+    // 获取奖励加成倍率
+    const rewardBonus = this.getRewardBonus();
+    const rewardMultiplier = 1 + rewardBonus;
+    
+    // 累加奖励（应用奖励强化加成）
+    const bonusGold = Math.floor(rewards.gold * rewardMultiplier);
+    const bonusTickets = Math.floor(rewards.tickets * rewardMultiplier);
+    this.totalRewards.gold += bonusGold;
+    this.totalRewards.tickets += bonusTickets;
+    
+    // 如果有奖励加成，显示日志
+    if (rewardBonus > 0) {
+      console.log(`💰 奖励强化生效！金币: ${rewards.gold} → ${bonusGold}, 抽卡券: ${rewards.tickets} → ${bonusTickets}`);
+    }
     
     // 检查是否需要显示强化选择（每5层）
     const upgradeInterval = CONFIG.ROGUELIKE?.UPGRADE_INTERVAL || 5;
@@ -796,12 +870,34 @@ export const EndlessMode = {
       </div>
     `).join('');
     
+    // 获取奖励加成信息
+    const rewardBonus = this.getRewardBonus();
+    const rewardMultiplier = 1 + rewardBonus;
+    const bonusGold = Math.floor(rewards.gold * rewardMultiplier);
+    const bonusTickets = Math.floor(rewards.tickets * rewardMultiplier);
+    const bonusPercent = Math.round(rewardBonus * 100);
+    
+    // 生成奖励显示HTML
+    let rewardsHtml;
+    if (rewardBonus > 0) {
+      const goldExtra = bonusGold - rewards.gold;
+      const ticketsExtra = bonusTickets - rewards.tickets;
+      rewardsHtml = `
+        <span>💰 ${rewards.gold}<span style="color:#90ee90;">(+${goldExtra})</span>=${bonusGold} <span style="color:#90ee90;">(+${bonusPercent}%)</span></span>
+        <span>🎫 ${rewards.tickets}<span style="color:#90ee90;">(+${ticketsExtra})</span>=${bonusTickets} <span style="color:#90ee90;">(+${bonusPercent}%)</span></span>
+      `;
+    } else {
+      rewardsHtml = `
+        <span>💰 +${rewards.gold}</span>
+        <span>🎫 +${rewards.tickets}</span>
+      `;
+    }
+    
     const content = `
       <div class="upgrade-modal">
         <p>🎉 第 ${this.currentFloor} 层通关！</p>
         <div class="upgrade-rewards">
-          <span>💰 +${rewards.gold}</span>
-          <span>🎫 +${rewards.tickets}</span>
+          ${rewardsHtml}
         </div>
         <hr>
         <p class="upgrade-title">🎁 选择一个强化</p>
@@ -966,6 +1062,17 @@ export const EndlessMode = {
     return value;
   },
   
+  // 获取奖励加成倍率（奖励强化，可叠加）
+  getRewardBonus() {
+    let bonus = 0;
+    this.currentBuffs.forEach(buff => {
+      if (buff.type === 'special' && buff.effect === 'rewardUp') {
+        bonus += buff.value || 0;
+      }
+    });
+    return bonus;  // 返回累计加成值，如0.5表示+50%
+  },
+  
   // 检查是否有特殊效果
   hasSpecialEffect(effect) {
     return this.currentBuffs.some(buff => buff.type === 'special' && buff.effect === effect);
@@ -1006,6 +1113,13 @@ export const EndlessMode = {
   // 失败
   async onDefeat() {
     if (!this.active) return;
+
+    // 记录智能组队战斗结果 (30层以上)
+    if (this.currentFloor >= 30) {
+      const playerTeamData = battle.allies.filter(a => !a.isSummon).map(a => CHARACTER_DATA[a.name] || a);
+      const enemyTeam = battle.enemies || [];
+      SmartTeamBuilder.recordMatchResult(playerTeamData, enemyTeam, false);
+    }
     
     // 检查是否有复活券
     const reviveCount = store.getReviveTickets();
@@ -1115,6 +1229,12 @@ export const EndlessMode = {
   async end(victory) {
     this.active = false;
     
+    // 如果是失败，清空保存的进度（只有撤退才保留）
+    if (!victory) {
+        this.savedProgress = { floor: 0, buffs: [], active: false };
+        this.saveProgress();
+    }
+    
     // 切换回主界面BGM（使用歌单）
     playMainBGM();
     
@@ -1138,7 +1258,16 @@ export const EndlessMode = {
       const baseCoins = completedFloor * coinConfig.BASE_RATE;
       const bossCount = Math.floor(completedFloor / this.config.BOSS_INTERVAL);
       const bossBonus = bossCount * coinConfig.BOSS_BONUS;
-      endlessCoinEarned = Math.max(0, baseCoins + bossBonus);
+      let rawEndlessCoin = Math.max(0, baseCoins + bossBonus);
+      
+      // 应用奖励强化加成
+      const rewardBonus = this.getRewardBonus();
+      const rewardMultiplier = 1 + rewardBonus;
+      endlessCoinEarned = Math.floor(rawEndlessCoin * rewardMultiplier);
+      
+      if (rewardBonus > 0) {
+        console.log(`🎖️ 奖励强化生效！无尽币: ${rawEndlessCoin} → ${endlessCoinEarned}`);
+      }
       
       // 保存撤退类型供结算弹窗使用
       this._wasFleeInBattle = isFleeInBattle;
@@ -1166,18 +1295,53 @@ export const EndlessMode = {
   
   // 显示胜利弹窗
   showVictoryModal(rewards) {
+    // 获取奖励加成信息
+    const rewardBonus = this.getRewardBonus();
+    const rewardMultiplier = 1 + rewardBonus;
+    const bonusGold = Math.floor(rewards.gold * rewardMultiplier);
+    const bonusTickets = Math.floor(rewards.tickets * rewardMultiplier);
+    const bonusPercent = Math.round(rewardBonus * 100);
+    
+    // 生成本层奖励显示HTML
+    let floorRewardsHtml;
+    if (rewardBonus > 0) {
+      const goldExtra = bonusGold - rewards.gold;
+      const ticketsExtra = bonusTickets - rewards.tickets;
+      floorRewardsHtml = `
+        <p>💰 金币: ${rewards.gold}<span style="color:#90ee90;">(+${goldExtra})</span> = ${bonusGold} <span style="color:#90ee90;">(+${bonusPercent}%)</span></p>
+        <p>🎫 抽卡券: ${rewards.tickets}<span style="color:#90ee90;">(+${ticketsExtra})</span> = ${bonusTickets} <span style="color:#90ee90;">(+${bonusPercent}%)</span></p>
+      `;
+    } else {
+      floorRewardsHtml = `
+        <p>💰 金币 +${rewards.gold}</p>
+        <p>🎫 抽卡券 +${rewards.tickets}</p>
+      `;
+    }
+    
+    // 生成累计奖励显示HTML（显示总加成）
+    let totalRewardsHtml;
+    if (rewardBonus > 0) {
+      totalRewardsHtml = `
+        <p>💰 金币: ${this.totalRewards.gold} <span style="color:#90ee90;">(含+${bonusPercent}%加成)</span></p>
+        <p>🎫 抽卡券: ${this.totalRewards.tickets} <span style="color:#90ee90;">(含+${bonusPercent}%加成)</span></p>
+      `;
+    } else {
+      totalRewardsHtml = `
+        <p>💰 金币: ${this.totalRewards.gold}</p>
+        <p>🎫 抽卡券: ${this.totalRewards.tickets}</p>
+      `;
+    }
+    
     const content = `
       <div class="endless-victory">
         <p>🎉 第 ${this.currentFloor} 层通关！</p>
         <div class="endless-rewards">
           <p><b>本层奖励</b></p>
-          <p>💰 金币 +${rewards.gold}</p>
-          <p>🎫 抽卡券 +${rewards.tickets}</p>
+          ${floorRewardsHtml}
         </div>
         <div class="endless-total-rewards">
           <p><b>累计奖励</b></p>
-          <p>💰 金币: ${this.totalRewards.gold}</p>
-          <p>🎫 抽卡券: ${this.totalRewards.tickets}</p>
+          ${totalRewardsHtml}
         </div>
         <hr>
         <p>是否继续挑战下一层？</p>
@@ -1215,18 +1379,42 @@ export const EndlessMode = {
     // 检查是否有接力券，有则显示记录选项
     const relayCount = store.getRelayTickets();
     let relaySection = '';
-    if (relayCount > 0) {
+    
+    // 需要现在有接力券才可以保存buff，下次恢复需要消耗接力券恢复buff
+    if (relayCount > 0 && this.currentBuffs.length > 0) {
       relaySection = `
         <div class="relay-section" style="margin:15px 0;padding:12px;background:rgba(100,200,100,0.15);border-radius:8px;border:1px solid rgba(100,200,100,0.3);">
-          <p style="margin-bottom:8px;">🔗 你有 <b style="color:#ffd700;">${relayCount}</b> 张接力券</p>
-          <p style="font-size:13px;color:#90ee90;">记录层数后，下次可从第 <b>${this.currentFloor + 1}</b> 层继续</p>
-          <p style="font-size:11px;color:#888;">（使用接力时消耗接力券，记录不消耗）</p>
-          <label class="relay-checkbox-label" style="display:flex;align-items:center;margin-top:10px;cursor:pointer;">
+          <p style="margin-bottom:8px;">🎫 你有 <b style="color:#ffd700;">${relayCount}</b> 张接力券</p>
+          <p style="font-size:13px;color:#90ee90;">撤退将保存层数，下次从第 <b>${this.currentFloor + 1}</b> 层继续</p>
+          <p style="font-size:11px;color:#888;">（勾选下方选项可记录当前强化，下次挑战需消耗1张接力券恢复）</p>
+          <label class="relay-checkbox-label" style="display:flex;align-items:center;margin-top:10px;cursor:pointer;justify-content: center;">
             <input type="checkbox" id="record-relay-checkbox" style="margin-right:8px;width:18px;height:18px;">
-            <span>记录当前层数</span>
+            <span>保存当前强化Buff</span>
           </label>
         </div>
       `;
+    } else if (relayCount > 0) {
+        relaySection = `
+        <div class="relay-section" style="margin:15px 0;padding:12px;background:rgba(100,200,100,0.15);border-radius:8px;border:1px solid rgba(100,200,100,0.3);">
+          <p style="margin-bottom:8px;">🎫 你有 <b style="color:#ffd700;">${relayCount}</b> 张接力券</p>
+          <p style="font-size:13px;color:#90ee90;">撤退将保存层数，下次从第 <b>${this.currentFloor + 1}</b> 层继续</p>
+          <p style="font-size:11px;color:#aaa;">(当前无强化Buff，无需保存)</p>
+        </div>
+      `;
+    } else if (this.currentBuffs.length > 0) {
+        relaySection = `
+        <div class="relay-section" style="margin:15px 0;padding:12px;background:rgba(100,200,100,0.15);border-radius:8px;border:1px solid rgba(100,200,100,0.3);">
+          <p style="font-size:13px;color:#90ee90;">撤退将保存层数，下次从第 <b>${this.currentFloor + 1}</b> 层继续</p>
+          <p style="font-size:11px;color:#aaa;">(当前有强化Buff，但无接力券，无法保存)</p>
+        </div>
+      `;
+    } else {
+        relaySection = `
+        <div class="relay-section" style="margin:15px 0;padding:12px;background:rgba(100,200,100,0.15);border-radius:8px;border:1px solid rgba(100,200,100,0.3);">
+          <p style="font-size:13px;color:#90ee90;">撤退将保存层数，下次从第 <b>${this.currentFloor + 1}</b> 层继续</p>
+          <p style="font-size:11px;color:#aaa;">(当前无强化Buff，无需保存；但同时也没有接力券，后续将无法保存)</p>
+        </div>
+      `;      
     }
     
     const content = `
@@ -1254,14 +1442,29 @@ export const EndlessMode = {
     
     setTimeout(() => {
       document.getElementById('retreat-confirm')?.addEventListener('click', async () => {
-        // 检查是否勾选了记录层数
+        // 准备保存的数据
+        this.savedProgress = {
+            floor: this.currentFloor,
+            buffs: [], // 默认清空Buff
+            active: true
+        };
+
         const recordCheckbox = document.getElementById('record-relay-checkbox');
         if (recordCheckbox && recordCheckbox.checked) {
-          // 记录层数（不消耗接力券）
-          this.relayFloor = this.currentFloor;
-          await this.saveProgress();
-          addBattleLog(`🔗 已记录接力层数: 第 ${this.currentFloor} 层`, 'system');
+          // 保存Buff（不消耗接力券）
+          this.savedProgress.buffs = [...this.currentBuffs];
+          addBattleLog(`💾 进度与强化已保存！`, 'system');
+        } else {
+          addBattleLog(`💾 进度已保存（强化未保存）`, 'system');
         }
+
+        // 保存进度 (手动保存，避免被 saveProgress 覆盖导致勾选无效)
+        state.maxFloorReached = this.maxFloorReached;
+        state.endlessProgress = this.savedProgress;
+        await store.save();
+        
+        console.log('💾 无尽进度已保存(撤退):', this.savedProgress);
+
         closeModal();
         await this.end(true);
       });
@@ -1278,6 +1481,10 @@ export const EndlessMode = {
   showEndModal(victory) {
     const title = victory ? '🏰 挑战结束' : '💀 挑战失败';
     
+    // 获取奖励加成信息
+    const rewardBonus = this.getRewardBonus();
+    const bonusPercent = Math.round(rewardBonus * 100);
+    
     let content = `
       <div class="endless-end">
         ${victory ? '<p>你选择撤退</p>' : '<p>💀 队伍全灭！</p>'}
@@ -1290,12 +1497,25 @@ export const EndlessMode = {
     // 胜利显示获得奖励，失败显示损失奖励
     const endlessCoinEarned = this._lastEndlessCoinEarned || 0;
     if (victory) {
-      content += `
-        <div class="endless-final-rewards success">
-          <p><b>🎁 获得奖励</b></p>
+      // 生成带加成明细的奖励显示
+      let rewardsHtml;
+      if (rewardBonus > 0) {
+        rewardsHtml = `
+          <p>💰 金币: +${this.totalRewards.gold} <span style="color:#90ee90;">(含+${bonusPercent}%加成)</span></p>
+          <p>🎫 抽卡券: +${this.totalRewards.tickets} <span style="color:#90ee90;">(含+${bonusPercent}%加成)</span></p>
+          <p>🎖️ 无尽币: +${endlessCoinEarned} <span style="color:#90ee90;">(含+${bonusPercent}%加成)</span></p>
+        `;
+      } else {
+        rewardsHtml = `
           <p>💰 金币: +${this.totalRewards.gold}</p>
           <p>🎫 抽卡券: +${this.totalRewards.tickets}</p>
           <p>🎖️ 无尽币: +${endlessCoinEarned}</p>
+        `;
+      }
+      content += `
+        <div class="endless-final-rewards success">
+          <p><b>🎁 获得奖励</b></p>
+          ${rewardsHtml}
         </div>
       `;
     } else {
@@ -1412,6 +1632,419 @@ export const EndlessMode = {
       this.saveProgress();
       console.log('🔄 无尽模式进度已重置');
     }
+  },
+  
+  // ==================== 扫荡系统 ====================
+  
+  /**
+   * 检查是否可以扫荡
+   * @returns {Object} { canSweep: boolean, reason: string, maxFloor: number }
+   */
+  canSweep() {
+    // 检查每日次数
+    const remaining = store.getSweepRemaining();
+    
+    if (remaining <= 0) {
+      return { canSweep: false, reason: '今日扫荡次数已用完', maxFloor: 0 };
+    }
+    
+    if (this.maxFloorReached < 1) {
+      return { canSweep: false, reason: '请先手动挑战无尽模式', maxFloor: 0 };
+    }
+    
+    if (this.active) {
+      return { canSweep: false, reason: '正在进行无尽模式挑战', maxFloor: 0 };
+    }
+    
+    if (this.sweepActive) {
+      return { canSweep: false, reason: '正在扫荡中', maxFloor: 0 };
+    }
+    
+    return { canSweep: true, maxFloor: this.maxFloorReached };
+  },
+  
+  /**
+   * 计算单层扫荡奖励
+   * @param {number} floor - 层数
+   * @returns {Object} { gold, tickets, endlessCoin }
+   */
+  calculateSweepReward(floor) {
+    const isBossFloor = floor % this.config.BOSS_INTERVAL === 0;
+    const scale = 1 + (floor - 1) * this.config.REWARD_SCALE_PER_FLOOR;
+    const rewardRate = CONFIG.SWEEP?.fast?.rewardRate || 0.5;
+    
+    // 金币奖励
+    let gold = Math.floor(this.config.BASE_GOLD * scale);
+    if (isBossFloor) gold = Math.floor(gold * 3);
+    gold = Math.floor(gold * rewardRate);
+    
+    // 抽卡券奖励
+    let tickets = Math.floor(this.config.BASE_TICKETS + floor / 5);
+    if (isBossFloor) tickets = Math.floor(tickets * 2);
+    tickets = Math.floor(tickets * rewardRate);
+    
+    // 无尽币奖励
+    const coinConfig = CONFIG.ENDLESS_COIN || { BASE_RATE: 2, BOSS_BONUS: 10 };
+    let endlessCoin = coinConfig.BASE_RATE;
+    if (isBossFloor) endlessCoin += coinConfig.BOSS_BONUS;
+    endlessCoin = Math.floor(endlessCoin * rewardRate);
+    
+    return { gold, tickets, endlessCoin };
+  },
+  
+  /**
+   * 计算扫荡总奖励预估
+   * @param {number} maxFloor - 最高层数
+   * @returns {Object} { gold, tickets, endlessCoin, totalTime }
+   */
+  calculateTotalSweepReward(maxFloor) {
+    let totalGold = 0;
+    let totalTickets = 0;
+    let totalEndlessCoin = 0;
+    
+    for (let floor = 1; floor <= maxFloor; floor++) {
+      const reward = this.calculateSweepReward(floor);
+      totalGold += reward.gold;
+      totalTickets += reward.tickets;
+      totalEndlessCoin += reward.endlessCoin;
+    }
+    
+    const timePerFloor = CONFIG.SWEEP?.fast?.timePerFloor || 1;
+    const totalTime = maxFloor * timePerFloor;
+    
+    return { gold: totalGold, tickets: totalTickets, endlessCoin: totalEndlessCoin, totalTime };
+  },
+  
+  /**
+   * 开始扫荡
+   * @param {string} mode - 扫荡模式 'fast'
+   */
+  async startSweep(mode = 'fast') {
+    const check = this.canSweep();
+    if (!check.canSweep) {
+      alert(check.reason);
+      return;
+    }
+    
+    // 初始化扫荡状态
+    this.sweepActive = true;
+    this.sweepMode = mode;
+    this.sweepCurrentFloor = 0;
+    this.sweepTotalReward = { gold: 0, tickets: 0, endlessCoin: 0 };
+    this.sweepCancelled = false;
+    
+    const maxFloor = this.maxFloorReached;
+    const timePerFloor = CONFIG.SWEEP?.[mode]?.timePerFloor || 1;
+    
+    console.log(`🧹 开始扫荡: 模式=${mode}, 目标层=${maxFloor}, 每层${timePerFloor}秒`);
+    
+    closeModal();
+    this.showSweepProgress();
+    
+    // 开始扫荡循环
+    for (let floor = 1; floor <= maxFloor; floor++) {
+      if (this.sweepCancelled) {
+        console.log(`🧹 扫荡被取消于第 ${floor} 层`);
+        break;
+      }
+      
+      this.sweepCurrentFloor = floor;
+      
+      // 计算该层奖励
+      const reward = this.calculateSweepReward(floor);
+      this.sweepTotalReward.gold += reward.gold;
+      this.sweepTotalReward.tickets += reward.tickets;
+      this.sweepTotalReward.endlessCoin += reward.endlessCoin;
+      
+      // 更新进度UI
+      this.updateSweepProgress(floor, maxFloor);
+      
+      // 等待
+      await this.sleep(timePerFloor * 1000);
+    }
+    
+    // 扫荡结束
+    this.finishSweep();
+  },
+  
+  /**
+   * 取消扫荡
+   */
+  cancelSweep() {
+    if (!this.sweepActive) return;
+    
+    this.sweepCancelled = true;
+    console.log('🧹 用户取消扫荡');
+  },
+  
+  /**
+   * 完成扫荡
+   */
+  finishSweep() {
+    if (!this.sweepActive) return;
+    
+    // 发放奖励
+    if (this.sweepTotalReward.gold > 0) {
+      store.addGold(this.sweepTotalReward.gold);
+    }
+    if (this.sweepTotalReward.tickets > 0) {
+      store.addTickets(this.sweepTotalReward.tickets);
+    }
+    if (this.sweepTotalReward.endlessCoin > 0) {
+      store.addEndlessCoin(this.sweepTotalReward.endlessCoin);
+    }
+    
+    // 扣除扫荡次数
+    store.consumeSweepCount();
+    
+    // 更新UI
+    updateResourceUI();
+    
+    const floorsSwept = this.sweepCurrentFloor;
+    const wasCancelled = this.sweepCancelled;
+    
+    // 重置扫荡状态
+    this.sweepActive = false;
+    this.sweepMode = null;
+    this.sweepCancelled = false;
+    
+    console.log(`🧹 扫荡完成: 层数=${floorsSwept}, 取消=${wasCancelled}`);
+    
+    // 显示完成界面
+    this.showSweepComplete(floorsSwept, wasCancelled);
+  },
+  
+  /**
+   * 显示扫荡面板
+   */
+  showSweepPanel() {
+    const check = this.canSweep();
+    const maxFloor = this.maxFloorReached;
+    const remaining = store.getSweepRemaining();
+    const maxCount = store.getSweepMaxCount();
+    const buyPrice = CONFIG.SWEEP?.buyPrice || 500;
+    const currentEndlessCoin = state.endlessCoin || 0;
+    
+    // 计算预估奖励
+    const estimated = this.calculateTotalSweepReward(maxFloor);
+    const estimatedTimeStr = this.formatTime(estimated.totalTime);
+    
+    let content = `
+      <div class="sweep-panel">
+        <div class="sweep-info">
+          <p>📊 历史最高层: <b style="color:#ffd700;">${maxFloor}</b> 层</p>
+          <p>🎫 今日剩余次数: <b style="color:${remaining > 0 ? '#90ee90' : '#ff6b6b'};">${remaining}/${maxCount}</b></p>
+        </div>
+        
+        <hr style="border-color:rgba(255,255,255,0.2);margin:15px 0;">
+        
+        <div class="sweep-mode-section">
+          <h4 style="margin-bottom:10px;">⚡ 极速扫荡</h4>
+          <div class="sweep-mode-info">
+            <p>• 每层 1 秒</p>
+            <p>• 奖励效率 50%</p>
+            <p>• 预计时间: <b>${estimatedTimeStr}</b></p>
+          </div>
+          <div class="sweep-estimated-rewards">
+            <p>预计奖励:</p>
+            <p>💰 金币: <span style="color:#ffd700;">${estimated.gold.toLocaleString()}</span></p>
+            <p>🎫 抽卡券: <span style="color:#90ee90;">${estimated.tickets}</span></p>
+            <p>🎖️ 无尽币: <span style="color:#87ceeb;">${estimated.endlessCoin}</span></p>
+          </div>
+        </div>
+    `;
+    
+    // 如果次数用完，显示购买选项
+    if (remaining <= 0) {
+      const canBuy = currentEndlessCoin >= buyPrice;
+      content += `
+        <hr style="border-color:rgba(255,255,255,0.2);margin:15px 0;">
+        <div class="sweep-buy-section">
+          <p style="color:#ff6b6b;">今日免费次数已用完</p>
+          <p>🎖️ 当前无尽币: <b>${currentEndlessCoin}</b></p>
+          <button id="sweep-buy" class="btn-secondary" ${canBuy ? '' : 'disabled'}>
+            购买扫荡次数 (${buyPrice} 无尽币)
+          </button>
+          ${canBuy ? '' : '<p style="color:#888;font-size:12px;">无尽币不足</p>'}
+        </div>
+      `;
+    }
+    
+    content += `
+        <div class="sweep-buttons" style="margin-top:20px;">
+          <button id="sweep-start" class="btn-primary" ${check.canSweep ? '' : 'disabled'}>
+            开始扫荡
+          </button>
+          <button id="sweep-cancel" class="btn-secondary">返回</button>
+        </div>
+        ${!check.canSweep && check.reason ? `<p style="color:#ff6b6b;font-size:12px;margin-top:10px;">${check.reason}</p>` : ''}
+      </div>
+    `;
+    
+    showModal('🧹 无尽扫荡', content, false);
+    
+    setTimeout(() => {
+      document.getElementById('sweep-start')?.addEventListener('click', () => {
+        this.startSweep('fast');
+      });
+      document.getElementById('sweep-cancel')?.addEventListener('click', () => {
+        closeModal();
+      });
+      document.getElementById('sweep-buy')?.addEventListener('click', () => {
+        this.buySweepCount();
+      });
+    }, 100);
+  },
+  
+  /**
+   * 显示扫荡进度
+   */
+  showSweepProgress() {
+    const maxFloor = this.maxFloorReached;
+    
+    const content = `
+      <div class="sweep-progress-panel">
+        <p style="font-size:18px;">⚡ 扫荡中...</p>
+        <div class="sweep-progress-info">
+          <p>当前层数: <span id="sweep-current-floor">0</span> / ${maxFloor}</p>
+          <div class="sweep-progress-bar-container">
+            <div id="sweep-progress-bar" class="sweep-progress-bar" style="width:0%"></div>
+          </div>
+          <p id="sweep-progress-percent">0%</p>
+        </div>
+        <div class="sweep-current-rewards">
+          <p>已获得奖励:</p>
+          <p>💰 金币: <span id="sweep-reward-gold">0</span></p>
+          <p>🎫 抽卡券: <span id="sweep-reward-tickets">0</span></p>
+          <p>🎖️ 无尽币: <span id="sweep-reward-coin">0</span></p>
+        </div>
+        <p id="sweep-remaining-time" style="color:#888;font-size:13px;">剩余时间: 计算中...</p>
+        <div class="sweep-buttons" style="margin-top:20px;">
+          <button id="sweep-cancel-btn" class="btn-danger">取消扫荡</button>
+        </div>
+        <p style="color:#888;font-size:11px;margin-top:10px;">取消后将结算已扫荡层数的奖励</p>
+      </div>
+    `;
+    
+    showModal('🧹 扫荡进度', content, false);
+    
+    setTimeout(() => {
+      document.getElementById('sweep-cancel-btn')?.addEventListener('click', () => {
+        this.cancelSweep();
+      });
+    }, 100);
+  },
+  
+  /**
+   * 更新扫荡进度UI
+   */
+  updateSweepProgress(currentFloor, maxFloor) {
+    const percent = Math.floor((currentFloor / maxFloor) * 100);
+    const timePerFloor = CONFIG.SWEEP?.fast?.timePerFloor || 1;
+    const remainingTime = (maxFloor - currentFloor) * timePerFloor;
+    
+    const floorEl = document.getElementById('sweep-current-floor');
+    const barEl = document.getElementById('sweep-progress-bar');
+    const percentEl = document.getElementById('sweep-progress-percent');
+    const goldEl = document.getElementById('sweep-reward-gold');
+    const ticketsEl = document.getElementById('sweep-reward-tickets');
+    const coinEl = document.getElementById('sweep-reward-coin');
+    const timeEl = document.getElementById('sweep-remaining-time');
+    
+    if (floorEl) floorEl.textContent = currentFloor;
+    if (barEl) barEl.style.width = `${percent}%`;
+    if (percentEl) percentEl.textContent = `${percent}%`;
+    if (goldEl) goldEl.textContent = this.sweepTotalReward.gold.toLocaleString();
+    if (ticketsEl) ticketsEl.textContent = this.sweepTotalReward.tickets;
+    if (coinEl) coinEl.textContent = this.sweepTotalReward.endlessCoin;
+    if (timeEl) timeEl.textContent = `剩余时间: ${this.formatTime(remainingTime)}`;
+  },
+  
+  /**
+   * 显示扫荡完成界面
+   */
+  showSweepComplete(floorsSwept, wasCancelled) {
+    const remaining = store.getSweepRemaining();
+    const maxCount = store.getSweepMaxCount();
+    
+    const content = `
+      <div class="sweep-complete-panel">
+        <p style="font-size:20px;">${wasCancelled ? '⚠️ 扫荡已取消' : '✅ 扫荡完成！'}</p>
+        <div class="sweep-complete-info">
+          <p>扫荡层数: 1 → ${floorsSwept}</p>
+        </div>
+        <div class="sweep-final-rewards">
+          <p><b>🎁 获得奖励</b></p>
+          <p>💰 金币: <span style="color:#ffd700;">+${this.sweepTotalReward.gold.toLocaleString()}</span></p>
+          <p>🎫 抽卡券: <span style="color:#90ee90;">+${this.sweepTotalReward.tickets}</span></p>
+          <p>🎖️ 无尽币: <span style="color:#87ceeb;">+${this.sweepTotalReward.endlessCoin}</span></p>
+        </div>
+        <p style="margin-top:15px;">今日剩余次数: <b style="color:${remaining > 0 ? '#90ee90' : '#ff6b6b'};">${remaining}/${maxCount}</b></p>
+        <div class="sweep-buttons" style="margin-top:20px;">
+          <button id="sweep-complete-ok" class="btn-primary">确定</button>
+        </div>
+      </div>
+    `;
+    
+    showModal('🧹 扫荡结果', content, false);
+    
+    setTimeout(() => {
+      document.getElementById('sweep-complete-ok')?.addEventListener('click', () => {
+        closeModal();
+      });
+    }, 100);
+  },
+  
+  /**
+   * 购买额外扫荡次数
+   */
+  buySweepCount() {
+    const buyPrice = CONFIG.SWEEP?.buyPrice || 500;
+    const currentEndlessCoin = state.endlessCoin || 0;
+    
+    if (currentEndlessCoin < buyPrice) {
+      alert(`无尽币不足！需要 ${buyPrice}，当前 ${currentEndlessCoin}`);
+      return;
+    }
+    
+    if (!confirm(`确定花费 ${buyPrice} 无尽币购买 1 次扫荡机会？`)) {
+      return;
+    }
+    
+    const success = store.buySweepCount();
+    if (success) {
+      updateResourceUI();
+      alert('购买成功！');
+      // 刷新面板
+      closeModal();
+      this.showSweepPanel();
+    } else {
+      alert('购买失败！');
+    }
+  },
+  
+  /**
+   * 格式化时间
+   */
+  formatTime(seconds) {
+    if (seconds < 60) {
+      return `${seconds}秒`;
+    } else if (seconds < 3600) {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return secs > 0 ? `${mins}分${secs}秒` : `${mins}分钟`;
+    } else {
+      const hours = Math.floor(seconds / 3600);
+      const mins = Math.floor((seconds % 3600) / 60);
+      return mins > 0 ? `${hours}小时${mins}分` : `${hours}小时`;
+    }
+  },
+  
+  /**
+   * 睡眠函数
+   */
+  sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 };
 
@@ -1419,6 +2052,12 @@ export const EndlessMode = {
 
 export function showEndlessMode() {
   const stats = EndlessMode.getStats();
+  
+  // 检查扫荡可用性
+  const canShowSweep = stats.maxFloorReached >= 1;  // 历史最高层>=1才显示扫荡按钮
+  // 扫荡按钮始终可点击（进入面板后可购买次数），只有正在扫荡时禁用
+  const sweepBtnDisabled = EndlessMode.active || EndlessMode.sweepActive;
+  const sweepBtnClass = sweepBtnDisabled ? 'btn-sweep-disabled' : 'btn-sweep';
   
   let aiStatus = '';
   if (typeof SmartAI !== 'undefined') {
@@ -1437,6 +2076,7 @@ export function showEndlessMode() {
       ${aiStatus}
       <div class="endless-buttons">
         <button id="start-endless" class="btn-primary">开始挑战</button>
+        ${canShowSweep ? `<button id="start-sweep" class="${sweepBtnClass}">🧹 扫荡</button>` : ''}
         <button id="close-endless" class="btn-secondary">返回</button>
       </div>
     </div>
@@ -1462,6 +2102,10 @@ export function showEndlessMode() {
     document.getElementById('start-endless')?.addEventListener('click', () => {
       closeModal();
       EndlessMode.start();
+    });
+    document.getElementById('start-sweep')?.addEventListener('click', () => {
+      closeModal();
+      EndlessMode.showSweepPanel();
     });
     document.getElementById('close-endless')?.addEventListener('click', () => {
       closeModal();

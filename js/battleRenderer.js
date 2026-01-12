@@ -66,23 +66,64 @@ export const BattleRenderer = {
     this.renderATBar();
   },
 
-  // 渲染AT条
+  // 渲染AT条 (基于Action Gauge预测)
   renderATBar() {
     const container = document.getElementById('at-bar-units');
     if (!container) return;
     
     container.innerHTML = '';
     
-    // 假设逻辑层已经同步了召唤物并计算了turnOrder
-    // 但为了保险，这里还是获取最新的单位列表
     const allUnits = [...battle.allies, ...battle.summons, ...battle.enemies].filter(u => u.currentHp > 0);
-    const sorted = allUnits.sort((a, b) => getUnitSpd(b) - getUnitSpd(a));
+    if (allUnits.length === 0) return;
     
-    const displayCount = Math.min(10, sorted.length);
+    // 模拟预测队列
+    let simQueue = [];
     
-    for (let i = 0; i < displayCount; i++) {
-      const unit = sorted[i];
-      const isCurrent = (battle.turnOrder[battle.currentTurn] === unit);
+    // 初始状态
+    allUnits.forEach(unit => {
+      const spd = Math.max(1, getUnitSpd(unit));
+      if (battle.currentUnit === unit) {
+        // 当前行动单位，初始TTA为0
+        simQueue.push({ unit, totalTime: 0 });
+      } else {
+        const ag = unit.actionGauge || 0;
+        const needed = Math.max(0, 10000 - ag);
+        simQueue.push({ unit, totalTime: needed / spd });
+      }
+    });
+
+    const displayList = [];
+    const predictionCounts = new Map(); // 防止单个单位过多霸榜
+
+    // 模拟未来行动，收集前10次行动
+    while (displayList.length < 10 && simQueue.length > 0) {
+      // 取出最快行动的
+      simQueue.sort((a, b) => a.totalTime - b.totalTime);
+      const nextAction = simQueue.shift();
+      const unit = nextAction.unit;
+      
+      displayList.push(nextAction);
+      
+      // 限制每个单位最多预测3次
+      const count = predictionCounts.get(unit) || 0;
+      if (count < 3) {
+        predictionCounts.set(unit, count + 1);
+        
+        // 模拟行动后，重新跑一整圈
+        const spd = Math.max(1, getUnitSpd(unit));
+        const oneTurnTime = 10000 / spd;
+        
+        simQueue.push({
+          unit: unit,
+          totalTime: nextAction.totalTime + oneTurnTime
+        });
+      }
+    }
+    
+    // 渲染
+    displayList.forEach((item, index) => {
+      const { unit, totalTime } = item;
+      const isCurrent = (index === 0 && battle.currentUnit === unit && totalTime === 0);
       
       const div = document.createElement('div');
       
@@ -105,14 +146,28 @@ export const BattleRenderer = {
       const stunIcon = unit.stunDuration > 0 ? '💫' : '';
       const shieldIcon = (unit.isEnemy && unit.shieldBroken) ? '💥' : '';
       
+      // 显示当前时刻的AG进度，用于辨识
+      const agPercent = Math.min(100, Math.max(0, (unit.actionGauge || 0) / 100));
+      
+      // 排名序号
+      const rank = index + 1;
+      let rankColor = '#999';
+      if (rank === 1) rankColor = '#ffd700'; // 金
+      else if (rank === 2) rankColor = '#c0c0c0'; // 银
+      else if (rank === 3) rankColor = '#cd7f32'; // 铜
+
       div.innerHTML = `
+        <div class="at-unit-rank" style="color:${rankColor};font-weight:bold;margin-right:6px;font-size:14px;width:15px;text-align:center;">${rank}</div>
         <div class="at-unit-icon">${icon}${stunIcon}${shieldIcon}</div>
         <div class="at-unit-name">${unit.name}</div>
-        <div class="at-unit-spd">SPD ${getUnitSpd(unit)}</div>
+        <div class="at-unit-bar">
+           <div class="at-unit-bar-fill" style="width:${agPercent}%"></div>
+        </div>
+        <div class="at-unit-spd">SPD ${getUnitSpd(unit)} <span class="at-unit-tta">(T:${Math.round(totalTime)})</span></div>
       `;
       
       container.appendChild(div);
-    }
+    });
   },
 
   // 首次渲染召唤物区域
@@ -154,7 +209,7 @@ export const BattleRenderer = {
     const hpPercent = Math.max(0, (summon.currentHp / summon.maxHp) * 100);
     const isLow = hpPercent < 30;
     const isDead = summon.currentHp <= 0;
-    const isActing = battle.turnOrder[battle.currentTurn] === summon;
+    const isActing = battle.currentUnit === summon;
     
     const div = document.createElement('div');
     div.className = `battle-unit summon ${isDead ? 'dead' : ''} ${isActing ? 'acting' : ''}`;
@@ -175,6 +230,7 @@ export const BattleRenderer = {
       if (summon.buffs.healPerTurn > 0) buffList.push(`回血 ${Math.round(summon.buffs.healPerTurn * 100)}%`);
       if (summon.buffs.doubleAttack) buffList.push('二连击');
       if (summon.buffs.stunOnHit) buffList.push('附带眩晕');
+      if (summon.buffs.taunt) buffList.push('嘲讽');
       if (buffList.length > 0) {
         buffText = `<div class="summon-buffs">${buffList.join(' | ')}</div>`;
       }
@@ -240,7 +296,7 @@ export const BattleRenderer = {
       
       const hpPercent = Math.max(0, (summon.currentHp / summon.maxHp) * 100);
       const isLow = hpPercent < 30;
-      const isActing = battle.turnOrder[battle.currentTurn] === summon;
+      const isActing = battle.currentUnit === summon;
       
       div.className = `battle-unit summon ${summon.currentHp <= 0 ? 'dead' : ''} ${isActing ? 'acting' : ''}`;
       
@@ -263,6 +319,7 @@ export const BattleRenderer = {
         if (summon.buffs.healPerTurn > 0) buffList.push(`回血 ${Math.round(summon.buffs.healPerTurn * 100)}%`);
         if (summon.buffs.doubleAttack) buffList.push('二连击');
         if (summon.buffs.stunOnHit) buffList.push('附带眩晕');
+        if (summon.buffs.taunt) buffList.push('嘲讽');
         buffText = buffList.join(' | ');
       }
       
@@ -333,7 +390,7 @@ export const BattleRenderer = {
       const energyPercent = Math.max(0, (unit.energy / unit.maxEnergy) * 100);
       const isLow = hpPercent < 30;
       const isDead = unit.currentHp <= 0;
-      const isActing = battle.turnOrder[battle.currentTurn] === unit;
+      const isActing = battle.currentUnit === unit;
       
       const div = document.createElement('div');
       div.className = `battle-unit ${isEnemy ? 'enemy' : ''} ${isDead ? 'dead' : ''} ${isActing ? 'acting' : ''}`;
@@ -423,6 +480,10 @@ export const BattleRenderer = {
       }
       if (unit.stunDuration && unit.stunDuration > 0) buffList.push(`💫眩晕(${unit.stunDuration}回合)`);
       if (unit.shieldBroken) buffList.push(`💥DEF归零`);
+      // 迷迭香专属buff
+      if (unit.aftershockCount && unit.aftershockCount > 1) buffList.push(`余震 ${unit.aftershockCount}次`);
+      if (unit.aftershockAoe) buffList.push(`余震范围化`);
+      if (unit.attackStunChance && unit.attackStunChance > 0) buffList.push(`眩晕率 ${Math.round(unit.attackStunChance * 100)}%`);
       
       if (buffList.length > 0) {
         buffText = `<div class="summon-buffs">${buffList.join(' | ')}</div>`;
@@ -454,7 +515,7 @@ export const BattleRenderer = {
       const energyPercent = Math.max(0, (unit.energy / unit.maxEnergy) * 100);
       const isLow = hpPercent < 30;
       const isDead = unit.currentHp <= 0;
-      const isActing = battle.turnOrder[battle.currentTurn] === unit;
+      const isActing = battle.currentUnit === unit;
       
       div.className = `battle-unit ${isEnemy ? 'enemy' : ''} ${isDead ? 'dead' : ''} ${isActing ? 'acting' : ''}`;
       
@@ -537,6 +598,10 @@ export const BattleRenderer = {
       }
       if (unit.stunDuration && unit.stunDuration > 0) buffList.push(`💫眩晕(${unit.stunDuration}回合)`);
       if (unit.shieldBroken) buffList.push(`💥DEF归零`);
+      // 迷迭香专属buff
+      if (unit.aftershockCount && unit.aftershockCount > 1) buffList.push(`余震 ${unit.aftershockCount}次`);
+      if (unit.aftershockAoe) buffList.push(`余震范围化`);
+      if (unit.attackStunChance && unit.attackStunChance > 0) buffList.push(`眩晕率 ${Math.round(unit.attackStunChance * 100)}%`);
       
       let buffsDiv = div.querySelector('.summon-buffs');
       if (buffList.length > 0) {
@@ -709,6 +774,148 @@ export const BattleRenderer = {
       hint.textContent = '😠 必须先击败嘲讽目标！';
       div.insertBefore(hint, div.firstChild.nextSibling);
     }
+  },
+
+  // 显示双目标选择（迷迭香"如你所愿"技能用）
+  showDualTargetSelect() {
+    const div = document.getElementById('target-select');
+    if (!div) return;
+    
+    const aliveEnemies = battle.enemies.filter(e => e.currentHp > 0);
+    
+    // 处理嘲讽
+    const tauntEnemies = aliveEnemies.filter(e =>
+      e.affixes && e.affixes.includes('taunt')
+    );
+    const hasTaunt = tauntEnemies.length > 0;
+    
+    // 获取可选目标列表
+    const selectableEnemies = hasTaunt ? tauntEnemies : aliveEnemies;
+    
+    // 如果可选目标≤2个，自动选择所有可选目标并执行
+    if (selectableEnemies.length <= 2) {
+      this.executeDualTargetSkill(selectableEnemies);
+      return;
+    }
+    
+    // 初始化双目标选择状态
+    this.dualTargetSelection = {
+      targets: [],
+      maxTargets: 2
+    };
+    
+    div.innerHTML = '<span>选择2个目标：（已选择 0/2）</span>';
+    
+    // 为每个敌人创建按钮
+    aliveEnemies.forEach(enemy => {
+      const unitDiv = document.getElementById(`unit-${enemy.unitId}`);
+      const isTauntEnemy = enemy.affixes && enemy.affixes.includes('taunt');
+      const isDisabled = hasTaunt && !isTauntEnemy;
+      
+      if (unitDiv && !isDisabled) {
+        unitDiv.classList.add('selectable');
+        unitDiv.onclick = () => this.handleDualTargetClick(enemy);
+      } else if (unitDiv) {
+        unitDiv.classList.add('disabled-target');
+      }
+      
+      let shieldInfo = '';
+      if (enemy.shield > 0) {
+        if (enemy.shieldBroken) {
+          shieldInfo = ' 💥已破';
+        } else {
+          shieldInfo = ` 🛡️${enemy.currentShield}/${enemy.shield}`;
+        }
+      }
+      
+      const btn = document.createElement('button');
+      btn.className = `target-btn dual-target ${isDisabled ? 'disabled' : ''} ${isTauntEnemy ? 'taunt-target' : ''}`;
+      btn.id = `dual-btn-${enemy.unitId}`;
+      
+      const tauntIcon = isTauntEnemy ? '😠 ' : '';
+      const disabledText = isDisabled ? ' (被嘲讽)' : '';
+      btn.textContent = `${tauntIcon}${enemy.name} (HP:${enemy.currentHp}${shieldInfo})${disabledText}`;
+      
+      if (!isDisabled) {
+        btn.onclick = () => this.handleDualTargetClick(enemy);
+      }
+      
+      div.appendChild(btn);
+    });
+    
+    if (hasTaunt) {
+      const hint = document.createElement('div');
+      hint.className = 'taunt-hint';
+      hint.textContent = '😠 必须先击败嘲讽目标！';
+      div.insertBefore(hint, div.firstChild.nextSibling);
+    }
+  },
+
+  // 处理双目标选择点击
+  handleDualTargetClick(enemy) {
+    if (!this.dualTargetSelection) return;
+    
+    const { targets, maxTargets } = this.dualTargetSelection;
+    
+    // 检查是否已经选择了这个目标
+    const existingIndex = targets.findIndex(t => t.unitId === enemy.unitId);
+    
+    if (existingIndex >= 0) {
+      // 取消选择
+      targets.splice(existingIndex, 1);
+      this.updateDualTargetUI(enemy, false);
+    } else if (targets.length < maxTargets) {
+      // 添加选择
+      targets.push(enemy);
+      this.updateDualTargetUI(enemy, true);
+    }
+    
+    // 更新提示文本
+    const div = document.getElementById('target-select');
+    if (div) {
+      const span = div.querySelector('span');
+      if (span) {
+        span.textContent = `选择2个目标：（已选择 ${targets.length}/2）`;
+      }
+    }
+    
+    // 如果选择了2个目标，执行技能
+    if (targets.length === maxTargets) {
+      this.clearUnitSelection();
+      this.executeDualTargetSkill(targets);
+    }
+  },
+
+  // 更新双目标选择UI状态
+  updateDualTargetUI(enemy, selected) {
+    const btn = document.getElementById(`dual-btn-${enemy.unitId}`);
+    if (btn) {
+      if (selected) {
+        btn.classList.add('selected');
+        btn.style.border = '2px solid #ffcc00';
+        btn.style.background = 'rgba(255, 204, 0, 0.3)';
+      } else {
+        btn.classList.remove('selected');
+        btn.style.border = '';
+        btn.style.background = '';
+      }
+    }
+    
+    const unitDiv = document.getElementById(`unit-${enemy.unitId}`);
+    if (unitDiv) {
+      if (selected) {
+        unitDiv.classList.add('dual-selected');
+      } else {
+        unitDiv.classList.remove('dual-selected');
+      }
+    }
+  },
+
+  // 执行双目标技能
+  async executeDualTargetSkill(targets) {
+    const battleModule = await getBattleModule();
+    // 传递targets数组作为目标
+    battleModule.executePlayerSkill(battle.selectedSkill, targets);
   },
 
   // 显示队友目标选择

@@ -20,6 +20,7 @@ import { getEnemyDecision } from './enemyAI.js';
 import { SummonSystem } from './summon.js';
 import { EndlessMode } from './endless_and_smartAI/endless.js';
 import { SmartAI_Battle } from './endless_and_smartAI/smartAI_battle.js';
+import { SmartAI } from './endless_and_smartAI/smartAI.js';
 import {
   SKILL_EFFECTS, executeSkillEffects, LEADER_BONUS,
   initChargeSkills, canUseChargeSkill, consumeCharge, processChargeSkills,
@@ -112,6 +113,7 @@ export function startBattle(stage) {
       isSummoner: data.summoner || false,  // 是否是召唤师
       isSummon: false,                      // 不是召唤物
       breakthrough: breakthrough,           // 保存突破状态
+      actionGauge: 0,                       // 初始化行动条
       unitId: `ally-${name}-${Date.now()}-${index}`
     };
   });
@@ -138,6 +140,7 @@ export function startBattle(stage) {
     originalDef: e.def,
     isEnemy: true,
     isSummon: false,
+    actionGauge: 0,                         // 初始化行动条
     unitId: `enemy-${e.name}-${idx}-${Date.now()}`
   }));
   
@@ -160,27 +163,11 @@ export function startBattle(stage) {
   playBattleBGM();
   
   addBattleLog('⚔️ 战斗开始！', 'system');
-  calculateTurnOrder();
-  battle.currentTurn = 0;
+  // calculateTurnOrder(); // 不再需要预计算顺序
+  battle.currentTurn = 0; // 这里的 currentTurn 改为总行动次数计数
   
   BattleRenderer.renderBattleInitial();
   setTimeout(() => nextTurn(), 500);
-}
-
-// 计算行动顺序（包含召唤物）
-export function calculateTurnOrder() {
-  // 同步召唤物到战斗状态
-  syncSummons();
-  
-  // 包含干员、召唤物、敌人
-  const allUnits = [...battle.allies, ...battle.summons, ...battle.enemies].filter(u => u.currentHp > 0);
-  
-  // 按SPD排序（考虑buff加成）
-  battle.turnOrder = allUnits.sort((a, b) => {
-    const spdA = getUnitSpd(a);
-    const spdB = getUnitSpd(b);
-    return spdB - spdA;
-  });
 }
 
 // ==================== 属性获取函数（从 skillCore.js 统一导入） ====================
@@ -223,6 +210,9 @@ export function selectSkill(skillName, unit) {
   
   if (skill.target === 'single') {
     BattleRenderer.showEnemyTargetSelect();
+  } else if (skill.target === 'dual') {
+    // 双目标技能（迷迭香"如你所愿"）
+    BattleRenderer.showDualTargetSelect();
   } else if (skill.target === 'ally') {
     BattleRenderer.showAllyTargetSelect(unit);
   } else {
@@ -293,8 +283,14 @@ export function executePlayerSkill(skill, target) {
   processUnitTurnEnd(user);
   
   // 进入下一回合
+  // 行动结束，清除当前单位标记
+  battle.currentUnit = null;
   BattleRenderer.renderBattle();
   battle.currentTurn++;
+  
+  // 扣除行动条 (保留溢出部分)
+  user.actionGauge -= 10000;
+  
   setTimeout(() => nextTurn(), 1000);
 }
 
@@ -349,8 +345,9 @@ function checkDeaths() {
       
       // 添加分裂单位到敌人列表
       if (newUnits && newUnits.length > 0) {
+        // 初始化分裂单位的行动条
+        newUnits.forEach(u => u.actionGauge = 0);
         battle.enemies.push(...newUnits);
-        calculateTurnOrder();  // 重新计算行动顺序
       }
     }
     
@@ -364,7 +361,7 @@ function checkDeaths() {
     if (ally.hasExtraLife && !ally.extraLifeUsed) {
       ally.extraLifeUsed = true;
       ally.currentHp = Math.floor(ally.maxHp * 0.3);  // 恢复30%HP
-      addBattleLog(`💖 ${ally.name} 触发【额外生命】！复活并恢复30%HP！`, 'system');
+      addBattleLog(`💖 ${ally.name} 触发【免死金牌】！复活并恢复30%HP！`, 'system');
       return;  // 不标记为死亡，跳过
     }
     
@@ -401,13 +398,15 @@ function checkDeaths() {
 export function nextTurn() {
   if (!battle.active) return;
   
-  // 同步召唤物
+  // 同步召唤物（确保新召唤物加入战斗列表）
   syncSummons();
   
   const aliveAllies = battle.allies.filter(u => u.currentHp > 0);
   const aliveEnemies = battle.enemies.filter(u => u.currentHp > 0);
   const aliveSummons = battle.summons.filter(s => s.currentHp > 0);
+  const allUnits = [...aliveAllies, ...aliveSummons, ...aliveEnemies];
   
+  // 检查战斗结束
   if (aliveEnemies.length === 0) {
     endBattle(true);
     return;
@@ -417,27 +416,55 @@ export function nextTurn() {
     return;
   }
   
-  if (battle.currentTurn >= battle.turnOrder.length) {
-    calculateTurnOrder();
-    battle.currentTurn = 0;
-    addBattleLog('--- 新回合 ---', 'system');
-  }
+  // 确保所有单位都有 actionGauge
+  allUnits.forEach(u => {
+    if (u.actionGauge === undefined) u.actionGauge = 0;
+  });
   
-  let current = battle.turnOrder[battle.currentTurn];
+  // 1. 寻找当前是否有已满行动条的单位 (AG >= 10000)
+  // 如果有多个，选溢出最多的（即速度最快的）
+  let readyUnits = allUnits.filter(u => u.actionGauge >= 10000);
   
-  // 跳过死亡单位
-  while (current && (current.currentHp <= 0)) {
-    battle.currentTurn++;
-    if (battle.currentTurn >= battle.turnOrder.length) {
-      setTimeout(() => nextTurn(), 500);
-      return;
+  if (readyUnits.length === 0) {
+    // 2. 如果没有单位满条，进行“跑条”
+    // 计算每个单位到达 10000 所需的时间 (Time To Act)
+    // TTA = (10000 - AG) / SPD
+    let minTTA = Infinity;
+    
+    allUnits.forEach(u => {
+      const spd = Math.max(1, getUnitSpd(u)); // 防止除以0
+      const needed = 10000 - u.actionGauge;
+      const tta = needed / spd;
+      if (tta < minTTA) minTTA = tta;
+    });
+    
+    // 推进时间
+    allUnits.forEach(u => {
+      const spd = Math.max(1, getUnitSpd(u));
+      u.actionGauge += spd * minTTA;
+    });
+    
+    // 重新获取满条单位
+    readyUnits = allUnits.filter(u => u.actionGauge >= 10000);
+    
+    // 理论上此时必须有单位满条，但为了防止浮点数误差，做个保底
+    if (readyUnits.length === 0) {
+      // 强制让最接近的满条
+      readyUnits = [allUnits.sort((a, b) => b.actionGauge - a.actionGauge)[0]];
+      readyUnits[0].actionGauge = 10000;
     }
-    current = battle.turnOrder[battle.currentTurn];
   }
   
-  if (!current) {
-    setTimeout(() => nextTurn(), 500);
-    return;
+  // 3. 选出行动单位（溢出最多的）
+  readyUnits.sort((a, b) => b.actionGauge - a.actionGauge);
+  const current = readyUnits[0];
+  
+  // 更新当前行动单位记录（供渲染器使用）
+  battle.currentUnit = current;
+  
+  // 简单的回合分割线日志（每10次行动显示一次，或者根据累计时间显示）
+  if (battle.currentTurn % 10 === 0 && battle.currentTurn > 0) {
+    // addBattleLog('--- 时间流逝 ---', 'system');
   }
   
   // ====== 干员每回合回血处理（生态耦合等技能） ======
@@ -487,7 +514,8 @@ export function nextTurn() {
     // 同步并重新计算行动顺序（新召唤物需要加入）
     if (newSummons.length > 0) {
       syncSummons();
-      calculateTurnOrder();
+      // 初始化新召唤物的行动条
+      newSummons.forEach(s => s.actionGauge = 0);
       BattleRenderer.renderBattle();
     }
   }
@@ -498,6 +526,10 @@ export function nextTurn() {
     addBattleLog(`${current.name} 处于眩晕状态，跳过行动！`, 'system');
     BattleRenderer.renderBattle();
     battle.currentTurn++;
+    
+    // 眩晕也要扣除行动条，相当于空过一回合
+    current.actionGauge -= 10000;
+    
     setTimeout(() => nextTurn(), 800);
     return;
   }
@@ -551,17 +583,53 @@ function enemyTurn(enemy) {
     decision = getEnemyDecision(enemy, allTargets, aliveEnemies);
   }
   
-  // ====== 新增：记录敌人行动给SmartAI ======
-  if (battle.isEndless && typeof SmartAI_Battle !== 'undefined') {
-    SmartAI_Battle.recordEnemyAction(enemy, decision, allTargets, aliveEnemies);
-  }
-  // ====== 新增结束 ======
-
   // 日志
   addBattleLog(`${enemy.name}【${decision.strategy}·${decision.skill.name}】`, 'system');
   
   // 执行技能效果
   const result = executeSkillEffects(decision.skill, enemy, decision.target, true);
+  
+  // ====== SmartAI 自我反思系统 ======
+  if (battle.isEndless && typeof SmartAI_Battle !== 'undefined') {
+    // 1. 评价行动
+    const evaluation = SmartAI_Battle.evaluateAction(decision.skill, decision.target, result);
+    
+    // 2. 控制台输出思考过程
+    if (evaluation) {
+      const epsilon = typeof SmartAI !== 'undefined' ? (SmartAI.epsilon * 100).toFixed(1) + '%' : 'N/A';
+      console.groupCollapsed(`🧠 SmartAI 思考: ${enemy.name} -> ${decision.skill.name}`);
+      
+      let targetDisplay = '无';
+      if (decision.target) {
+        targetDisplay = decision.target.name;
+      } else if (result.affectedTargets && result.affectedTargets.length > 0) {
+        // 如果是AOE或随机目标，显示实际命中的目标
+        const names = result.affectedTargets.map(t => t.name);
+        // 去重
+        const uniqueNames = [...new Set(names)];
+        targetDisplay = uniqueNames.join(', ');
+        if (uniqueNames.length > 3) {
+          targetDisplay = `${uniqueNames.slice(0, 3).join(', ')} 等${uniqueNames.length}人`;
+        }
+      } else {
+        // 兜底显示
+        const t = decision.skill.target;
+        if (t === 'all' || t === 'all_enemy') targetDisplay = '全体敌人';
+        else if (t === 'all_ally' || t === 'all_ally_enemy') targetDisplay = '全体队友';
+        else if (t === 'self') targetDisplay = '自身';
+      }
+      
+      console.log(`🎯 目标: ${targetDisplay}`);
+      console.log(`🎲 探索率: ${epsilon}`);
+      console.log(`📝 评语: ${evaluation.comments}`);
+      console.log(`⭐ 评分: ${evaluation.score} ${evaluation.stars}`);
+      console.groupEnd();
+    }
+    
+    // 3. 记录行动并传入评分 (闭环学习)
+    SmartAI_Battle.recordEnemyAction(enemy, decision, allTargets, aliveEnemies, evaluation ? evaluation.score : 3);
+  }
+  // ====== SmartAI 结束 ======
   
   // 处理结果
   handleSkillResult(result);
@@ -570,8 +638,14 @@ function enemyTurn(enemy) {
   checkDeaths();
   
   // 进入下一回合
+  // 行动结束，清除当前单位标记
+  battle.currentUnit = null;
   BattleRenderer.renderBattle();
   battle.currentTurn++;
+  
+  // 扣除行动条
+  enemy.actionGauge -= 10000;
+  
   setTimeout(() => nextTurn(), 1000);
 }
 
@@ -712,3 +786,29 @@ function doFlee() {
   addBattleLog('撤退了...', 'system');
   closeBattleField();
 }
+
+// ==================== 调试接口挂载 ====================
+window.BattleSystem = {
+  // 核心状态 (Getter确保获取最新状态)
+  get state() { return state; },
+  get battle() { return battle; },
+  
+  // 核心流程控制
+  startBattle,
+  nextTurn,
+  fleeBattle,
+  
+  // 技能与交互
+  selectSkill,
+  executePlayerSkill,
+  
+  // 渲染与UI
+  updateStageUI,
+  renderBattle,
+  
+  // 内部调试 (暴露未导出的内部函数，方便强制结束战斗)
+  // 注意：endBattle 是文件内定义的局部函数，在这里可以被闭包捕获
+  endBattle: (victory) => endBattle(victory)
+};
+
+console.log('🔧 BattleSystem debug interface mounted to window.BattleSystem');

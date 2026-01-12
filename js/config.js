@@ -244,6 +244,26 @@ export const CONFIG = {
     }
   },
 
+  // ==================== 扫荡系统配置 ====================
+  SWEEP: {
+    maxDailyCount: 3,           // 每日最大免费次数
+    buyPrice: 500,              // 购买额外次数的价格（无尽币）
+    
+    // 极速扫荡配置（先只实现极速）
+    fast: {
+      timePerFloor: 1,          // 每层时间（秒）
+      rewardRate: 0.5,          // 奖励效率 50%
+      name: '极速扫荡'
+    },
+    
+    // 普通扫荡配置（后续实现）
+    normal: {
+      timePerFloor: 60,         // 每层时间（秒）- 1分钟
+      rewardRate: 0.9,          // 奖励效率 90%
+      name: '普通扫荡'
+    }
+  },
+
   // ==================== Roguelike强化配置 ====================
   // 注意：所有百分比值统一使用小数形式（0.15表示15%）
   ROGUELIKE: {
@@ -258,8 +278,8 @@ export const CONFIG = {
       regenPerTurn: { name: '备用医疗装置', icon: '💚', desc: '全队每回合回复10%HP', type: 'special', effect: 'regenPerTurn', value: 0.10 },
       energyUp: { name: '能量强化', icon: '⚡', desc: '全队能量+50', type: 'instant', effect: 'energy', value: 50 },
       shieldAll: { name: '战斗护盾', icon: '🔰', desc: '每层战斗开始时获得25%HP护盾', type: 'battle_start', effect: 'shield', value: 0.25 },
-      extraLife: { name: '额外生命', icon: '💖', desc: '1次免死金牌', type: 'special', effect: 'extraLife' },
-      doubleReward: { name: '双倍奖励', icon: '💰', desc: '本次挑战奖励x2', type: 'special', effect: 'doubleReward' }
+      extraLife: { name: '免死金牌', icon: '💖', desc: '全队干员每层都拥有1次免死机会，触发时立即复活并恢复30%HP', type: 'special', effect: 'extraLife' },
+      rewardUp: { name: '奖励强化', icon: '💰', desc: '每层奖励+50%（可叠加）', type: 'special', effect: 'rewardUp', value: 0.5 }
     },
     // 每次提供的选项数量
     OPTIONS_COUNT: 5,

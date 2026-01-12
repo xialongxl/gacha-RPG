@@ -23,6 +23,7 @@ import { fleeBattle } from './battle.js';
 import { showEndlessMode, initEndlessMode, EndlessMode } from './endless_and_smartAI/endless.js';
 import { AudioManager, BGMPlayer, toggleBGMPlayer, playMainBGM } from './audio.js';
 import { SmartAI } from './endless_and_smartAI/smartAI.js';
+import { SmartTeamBuilder } from './endless_and_smartAI/smartAI_teamBuilder.js';
 import './exchange.js'; // 导入以执行模块并绑定 window 函数
 import './charDetail.js'; // 导入以执行模块并绑定 window 函数
 import { initShopPageObserver } from './shop.js';
@@ -41,6 +42,7 @@ async function init() {
 
     // 初始化SmartAI
     SmartAI.init().catch(err => console.error('SmartAI 初始化失败:', err));
+    SmartTeamBuilder.init().catch(err => console.error('SmartTeamBuilder 初始化失败:', err));
 
     // 初始化无尽模式
     initEndlessMode();

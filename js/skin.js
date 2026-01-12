@@ -84,7 +84,21 @@ export const SKIN_DATA_RAW = {
     price: 20,
     artOffset: { x: 0, y: -299, z: 0 },
     spineFile: 'char_358_lisa_epoque_22'  // 只需文件名，自动生成完整路径
-  }
+  },
+  'rosmon_skin_1': {
+    charId: 'char_391_rosmon',
+    name: '拥抱新生',
+    price: 20,
+    artOffset: { x: 50, y: -214, z: 0 },
+    spineFile: 'char_391_rosmon_epoque_17'  // 只需文件名，自动生成完整路径
+  },
+  'rosmon_skin_2': {
+    charId: 'char_391_rosmon',
+    name: '轻盈一梦',
+    price: 20,
+    artOffset: { x: -50, y: -300, z: 0 },
+    spineFile: 'char_391_rosmon_sale_16'  // 只需文件名，自动生成完整路径
+  },
 };
 
 // 处理后的时装数据

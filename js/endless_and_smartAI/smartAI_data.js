@@ -98,17 +98,17 @@ export const AI_CONFIG = {
   DROPOUT_RATE: 0.2,            // Dropout比率
 
   // 输入/输出维度
-  // V7: 225 + 8(嘲讽特征) = 233
-  INPUT_SIZE: 233,              // 输入特征维度（含嘲讽编码）
+  // V8: 233 + 13(行动条特征) = 246
+  INPUT_SIZE: 246,              // 输入特征维度（含行动条编码）
   SKILL_OUTPUT: 10,             // 技能输出维度
   TARGET_OUTPUT: 8              // 目标输出维度
 };
 
 // ==================== 特征维度说明 ====================
 /*
- * INPUT_SIZE = 233 特征分布 (V7)：
+ * INPUT_SIZE = 246 特征分布 (V8)：
  *
- * 我方单位 (最多8个，每个12特征) = 96
+ * 我方单位 (最多8个，每个13特征) = 104
  *   - currentHp / maxHp          血量比例
  *   - energy / maxEnergy         能量比例
  *   - atk / 500                  攻击力归一化
@@ -121,8 +121,9 @@ export const AI_CONFIG = {
  *   - buffDef / 100              防御Buff
  *   - skillUseCount / 10         技能使用次数
  *   - hasTaunt                   是否有嘲讽 (V7新增)
+ *   - actionGauge / 10000        行动条进度 (V8新增)
  *
- * 敌方单位 (最多4个，每个31特征) = 124
+ * 敌方单位 (最多4个，每个32特征) = 128
  *   - currentHp / maxHp          血量比例
  *   - atk / 500                  攻击力归一化
  *   - def / 100                  防御力归一化
@@ -130,14 +131,16 @@ export const AI_CONFIG = {
  *   - shieldBroken               护盾是否破碎
  *   - currentShield / shield     护盾比例
  *   - stunDuration > 0           是否眩晕
+ *   - actionGauge / 10000        行动条进度 (V8新增)
  *   - [13个词缀 one-hot]         词缀特征
  *   - [3个debuff状态]            持续减益状态
  *   - [8个职业 one-hot]          职业特征 (V6新增)
  *
- * 当前行动单位 = 3
+ * 当前行动单位 = 4
  *   - currentHp / maxHp
  *   - energy / maxEnergy
  *   - isEnemy
+ *   - actionGauge / 10000        行动条进度 (V8新增)
  *
  * 战斗信息 = 2
  *   - turn / 100                 回合数归一化
@@ -146,5 +149,5 @@ export const AI_CONFIG = {
  * 玩家Roguelike强化 = 8
  *   - [8个buff one-hot]
  *
- * 总计: 96 + 124 + 3 + 2 + 8 = 233 (V7)
+ * 总计: 104 + 128 + 4 + 2 + 8 = 246 (V8)
  */

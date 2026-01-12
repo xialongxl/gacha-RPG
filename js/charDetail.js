@@ -47,6 +47,11 @@ export function showCharDetail(charName) {
     artOffset = SkinSystem.getSkinArtOffset(data.id);
   }
   
+  // 如果没有皮肤偏移，检查干员数据是否有默认立绘偏移
+  if (!artOffset && data.artOffset) {
+    artOffset = data.artOffset;
+  }
+  
   if (artSrc) {
     artImg.src = artSrc;
     artImg.style.display = 'block';
@@ -383,6 +388,11 @@ export function refreshCharDetailArt() {
       artSrc = skinArt;
     }
     artOffset = SkinSystem.getSkinArtOffset(data.id);
+  }
+  
+  // 如果没有皮肤偏移，检查干员数据是否有默认立绘偏移
+  if (!artOffset && data.artOffset) {
+    artOffset = data.artOffset;
   }
   
   const artWrapper = document.getElementById('char-detail-art-wrapper');
